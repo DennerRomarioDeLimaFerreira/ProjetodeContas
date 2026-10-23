@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
+  Cloud,
   CreditCard as CreditCardIcon,
   FileSpreadsheet,
   LayoutDashboard,
   ListOrdered,
   Plus,
+  RefreshCw,
   RotateCcw,
   Sparkles,
   Target,
@@ -29,6 +31,10 @@ import {
   SettlementRecord,
   Transaction,
 } from './types/finance';
+import {
+  loadCloudFinanceState,
+  saveCloudFinanceState,
+} from './utils/cloudSync';
 import {
   addMonths,
   computeFirstCompetenceMonth,
@@ -74,12 +80,66 @@ export function App() {
   const [quickText, setQuickText] = useState('');
   const [quickFeedback, setQuickFeedback] = useState<string | null>(null);
 
+  // Sincronização na Nuvem (Neon PostgreSQL)
+  const [cloudStatus, setCloudStatus] = useState<'connecting' | 'synced' | 'saving' | 'offline'>('connecting');
+  const isInitialCloudLoadDone = useRef(false);
+  const skipNextCloudSave = useRef(false);
+
+  const syncFromCloud = async () => {
+    try {
+      setCloudStatus('connecting');
+      const { state: remoteState } = await loadCloudFinanceState();
+      const localHasData =
+        state.transactions.length > 0 || state.cards.length > 0;
+      const remoteHasData =
+        remoteState &&
+        (remoteState.transactions?.length > 0 || remoteState.cards?.length > 0);
+
+      if (remoteState && (remoteHasData || !localHasData)) {
+        skipNextCloudSave.current = true;
+        setState(remoteState);
+      } else {
+        await saveCloudFinanceState(state);
+      }
+      isInitialCloudLoadDone.current = true;
+      setCloudStatus('synced');
+    } catch (err) {
+      console.error('Erro ao sincronizar com Neon Cloud DB:', err);
+      isInitialCloudLoadDone.current = true;
+      setCloudStatus('offline');
+    }
+  };
+
+  useEffect(() => {
+    syncFromCloud();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (e) {
       console.error('Erro ao salvar no LocalStorage:', e);
     }
+
+    if (!isInitialCloudLoadDone.current) return;
+    if (skipNextCloudSave.current) {
+      skipNextCloudSave.current = false;
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setCloudStatus('saving');
+        await saveCloudFinanceState(state);
+        setCloudStatus('synced');
+      } catch (err) {
+        console.error('Erro ao salvar estado no Neon Cloud DB:', err);
+        setCloudStatus('offline');
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
   }, [state]);
 
   const monthTransactions = useMemo(
@@ -355,6 +415,33 @@ export function App() {
 
           {/* Ações Rápidas */}
           <div className="flex items-center gap-2.5">
+            <button
+              onClick={syncFromCloud}
+              title="Sincronizado com banco de dados na nuvem (Neon PostgreSQL) — clique para atualizar"
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition ${
+                cloudStatus === 'synced'
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
+                  : cloudStatus === 'saving' || cloudStatus === 'connecting'
+                  ? 'bg-sky-500/10 border-sky-500/30 text-sky-300'
+                  : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+              }`}
+            >
+              {cloudStatus === 'saving' || cloudStatus === 'connecting' ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Cloud className="w-3.5 h-3.5" />
+              )}
+              <span className="hidden sm:inline">
+                {cloudStatus === 'synced'
+                  ? 'Nuvem Ativa'
+                  : cloudStatus === 'saving'
+                  ? 'Salvando...'
+                  : cloudStatus === 'connecting'
+                  ? 'Conectando...'
+                  : 'Local'}
+              </span>
+            </button>
+
             <button
               onClick={() => setIsImportExportOpen(true)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-200 transition"
