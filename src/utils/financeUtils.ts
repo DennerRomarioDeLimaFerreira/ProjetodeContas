@@ -11,7 +11,26 @@ export function formatCurrency(value: number): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value || 0);
+}
+
+export function parseExactNumber(raw: string): number {
+  const clean = String(raw || '').replace(/[R$\s]/g, '').trim();
+  if (!clean) return 0;
+  if (clean.includes(',') && clean.includes('.')) {
+    const lastComma = clean.lastIndexOf(',');
+    const lastDot = clean.lastIndexOf('.');
+    if (lastComma > lastDot) {
+      return parseFloat(clean.replace(/\./g, '').replace(',', '.')) || 0;
+    }
+    return parseFloat(clean.replace(/,/g, '')) || 0;
+  }
+  if (clean.includes(',')) {
+    return parseFloat(clean.replace(',', '.')) || 0;
+  }
+  return parseFloat(clean) || 0;
 }
 
 export function getCurrentYearMonth(): string {
@@ -264,11 +283,11 @@ export function calculateMonthlySettlement(
     const creditor = creditors[j];
     const transferAmount = Math.min(debtor.amount, creditor.amount);
 
-    if (transferAmount > 0.01) {
+    if (transferAmount > 0.001) {
       transfers.push({
         fromMember: debtor.member,
         toMember: creditor.member,
-        amount: Number(transferAmount.toFixed(2)),
+        amount: transferAmount,
       });
     }
 

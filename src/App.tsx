@@ -39,13 +39,14 @@ import {
   parseQuickEntry,
 } from './utils/financeUtils';
 
-const STORAGE_KEY = 'duofinance_state_v1';
+const STORAGE_KEY = 'duofinance_state_real_v1';
 
 type ActiveTab = 'dashboard' | 'transactions' | 'cards' | 'shared' | 'budgets';
 
 export function App() {
   const [state, setState] = useState<FinanceState>(() => {
     try {
+      localStorage.removeItem('duofinance_state_v1');
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved) as FinanceState;
@@ -123,7 +124,7 @@ export function App() {
         id: `tx-q-${Date.now()}-${i}`,
         groupId: quickPreview.installments > 1 ? groupId : undefined,
         description: quickPreview.description,
-        amount: Number(perInstallment.toFixed(2)),
+        amount: perInstallment,
         totalPurchaseAmount:
           quickPreview.installments > 1 ? quickPreview.amount : undefined,
         date,
@@ -272,10 +273,25 @@ export function App() {
     }));
   };
 
+  const handleDeleteCategory = (categoryId: string) => {
+    const cat = state.categories.find((c) => c.id === categoryId);
+    if (
+      !window.confirm(
+        `Deseja excluir a categoria "${cat?.name || ''}"?`
+      )
+    ) {
+      return;
+    }
+    setState((prev) => ({
+      ...prev,
+      categories: prev.categories.filter((c) => c.id !== categoryId),
+    }));
+  };
+
   const handleResetDemo = () => {
     if (
       window.confirm(
-        'Deseja restaurar os dados de demonstração iniciais? Suas alterações atuais serão substituídas.'
+        'Deseja zerar todos os lançamentos, cartões e metas para começar do zero?'
       )
     ) {
       const fresh = createInitialFinanceState();
@@ -498,6 +514,14 @@ export function App() {
             onAddMember={handleAddMember}
             onAddSettlement={handleAddSettlement}
             onDeleteSettlement={handleDeleteSettlement}
+            onUpdateTransaction={(updatedTx) => {
+              setState((prev) => ({
+                ...prev,
+                transactions: prev.transactions.map((t) =>
+                  t.id === updatedTx.id ? updatedTx : t
+                ),
+              }));
+            }}
           />
         )}
 
@@ -529,6 +553,7 @@ export function App() {
             members={state.members}
             onUpdateCategory={handleUpdateCategory}
             onAddCategory={handleAddCategory}
+            onDeleteCategory={handleDeleteCategory}
           />
         )}
       </main>
@@ -541,6 +566,7 @@ export function App() {
           setEditingTx(null);
         }}
         onSaveTransactions={handleSaveTransactions}
+        onAddCategory={handleAddCategory}
         categories={state.categories}
         cards={state.cards}
         members={state.members}

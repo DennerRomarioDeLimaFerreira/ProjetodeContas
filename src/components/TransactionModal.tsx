@@ -4,6 +4,7 @@ import {
   CreditCard as CreditCardIcon,
   DollarSign,
   Layers,
+  Plus,
   Repeat,
   Tag,
   Users,
@@ -24,12 +25,14 @@ import {
   formatCurrency,
   formatMonthLabel,
   getTodayISO,
+  parseExactNumber,
 } from '../utils/financeUtils';
 
 interface TransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveTransactions: (newTransactions: Transaction[]) => void;
+  onAddCategory?: (category: Category) => void;
   categories: Category[];
   cards: CreditCard[];
   members: Member[];
@@ -41,6 +44,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   isOpen,
   onClose,
   onSaveTransactions,
+  onAddCategory,
   categories,
   cards,
   members,
@@ -48,6 +52,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   editingTransaction,
 }) => {
   const [type, setType] = useState<TransactionType>('expense');
+  const [showInlineCat, setShowInlineCat] = useState(false);
+  const [inlineCatName, setInlineCatName] = useState('');
+  const [inlineCatColor, setInlineCatColor] = useState('#10b981');
   const [description, setDescription] = useState('');
   const [amountInput, setAmountInput] = useState('');
   const [amountMode, setAmountMode] = useState<'total' | 'installment'>('total');
@@ -94,8 +101,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setDate(defaultDate);
       const firstExpCat = categories.find((c) => c.type !== 'income');
       setCategoryId(firstExpCat?.id || categories[0]?.id || '');
-      setPaymentMethod('credit_card');
       const defaultCard = cards[0];
+      setPaymentMethod(defaultCard ? 'credit_card' : 'pix');
       setCardId(defaultCard?.id || '');
       setInstallments(1);
       setPaidById(defaultCard?.holderId || members[0]?.id || '');
@@ -115,7 +122,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   );
 
   const selectedCard = cards.find((c) => c.id === cardId);
-  const numericAmount = parseFloat(amountInput.replace(',', '.')) || 0;
+  const numericAmount = parseExactNumber(amountInput);
 
   const effectiveInstallments =
     type === 'expense' && paymentMethod === 'credit_card' ? installments : 1;
@@ -165,7 +172,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         ...editingTransaction,
         type,
         description: description.trim(),
-        amount: Number(numericAmount.toFixed(2)),
+        amount: numericAmount,
         date,
         categoryId: categoryId || filteredCategories[0]?.id || '',
         paymentMethod,
@@ -197,8 +204,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           id: `tx-${Date.now()}-${i}`,
           groupId: baseGroupId,
           description: description.trim(),
-          amount: Number(perInstallmentAmount.toFixed(2)),
-          totalPurchaseAmount: Number(totalPurchaseValue.toFixed(2)),
+          amount: perInstallmentAmount,
+          totalPurchaseAmount: totalPurchaseValue,
           date,
           competenceMonth: compMonth,
           type,
@@ -222,7 +229,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           id: `tx-${Date.now()}-rec-${i}`,
           groupId: baseGroupId,
           description: description.trim(),
-          amount: Number(numericAmount.toFixed(2)),
+          amount: numericAmount,
           date,
           competenceMonth: compMonth,
           type,
@@ -246,7 +253,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       generated.push({
         id: `tx-${Date.now()}`,
         description: description.trim(),
-        amount: Number(numericAmount.toFixed(2)),
+        amount: numericAmount,
         date,
         competenceMonth: firstCompetence,
         type,
@@ -374,21 +381,72 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">
-                <Tag className="w-3.5 h-3.5 inline mr-1" />
-                Categoria
-              </label>
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
-              >
-                {filteredCategories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-medium text-slate-400">
+                  <Tag className="w-3.5 h-3.5 inline mr-1" />
+                  Categoria
+                </label>
+                {onAddCategory && (
+                  <button
+                    type="button"
+                    onClick={() => setShowInlineCat(!showInlineCat)}
+                    className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-0.5"
+                  >
+                    <Plus className="w-3 h-3" /> Nova categoria
+                  </button>
+                )}
+              </div>
+              {showInlineCat ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="color"
+                    value={inlineCatColor}
+                    onChange={(e) => setInlineCatColor(e.target.value)}
+                    className="h-9 w-9 bg-slate-950 border border-slate-800 rounded-lg p-1 cursor-pointer shrink-0"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Nome da categoria..."
+                    value={inlineCatName}
+                    onChange={(e) => setInlineCatName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!inlineCatName.trim() || !onAddCategory) return;
+                      const created: Category = {
+                        id: `cat-${Date.now()}`,
+                        name: inlineCatName.trim(),
+                        icon: 'Tag',
+                        color: inlineCatColor,
+                        type,
+                        monthlyBudget: 0,
+                        essentialType: type === 'expense' ? 'needs' : 'savings',
+                      };
+                      onAddCategory(created);
+                      setCategoryId(created.id);
+                      setInlineCatName('');
+                      setShowInlineCat(false);
+                    }}
+                    className="px-3 py-2 bg-emerald-500 text-slate-950 rounded-xl text-xs font-bold shrink-0"
+                  >
+                    Criar
+                  </button>
+                </div>
+              ) : (
+                <select
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+                >
+                  {filteredCategories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
@@ -438,7 +496,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     </label>
                     <select
                       value={paidById}
-                      onChange={(e) => setPaidById(e.target.value)}
+                      onChange={(e) => {
+                        setPaidById(e.target.value);
+                        setBeneficiaryId(e.target.value);
+                      }}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
                     >
                       {members.map((m) => (
@@ -594,21 +655,42 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               </div>
 
               {splitType === 'individual' && (
-                <div className="pt-2">
-                  <label className="block text-xs text-slate-400 mb-1">
-                    De quem é este gasto individual? (mesmo que tenha passado no cartão do outro)
-                  </label>
-                  <select
-                    value={beneficiaryId}
-                    onChange={(e) => setBeneficiaryId(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
-                  >
-                    {members.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
+                <div className="pt-2 space-y-2">
+                  <div>
+                    <label className="block text-xs text-slate-300 font-medium mb-1">
+                      De quem é este gasto individual (quem deve arcar com 100%)?
+                    </label>
+                    <select
+                      value={beneficiaryId}
+                      onChange={(e) => {
+                        const newBeneficiary = e.target.value;
+                        setBeneficiaryId(newBeneficiary);
+                        if (paymentMethod !== 'credit_card') {
+                          setPaidById(newBeneficiary);
+                        }
+                      }}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
+                    >
+                      {members.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          100% de {m.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {paymentMethod === 'credit_card' && paidById !== beneficiaryId && (
+                    <div className="text-[11px] bg-amber-500/10 border border-amber-500/30 text-amber-200 px-3 py-2 rounded-lg">
+                      Nota: Como o cartão selecionado pertence a{' '}
+                      <strong>
+                        {members.find((m) => m.id === paidById)?.name}
+                      </strong>
+                      , este valor entrará como reembolso devido por{' '}
+                      <strong>
+                        {members.find((m) => m.id === beneficiaryId)?.name}
+                      </strong>{' '}
+                      ao titular do cartão.
+                    </div>
+                  )}
                 </div>
               )}
 

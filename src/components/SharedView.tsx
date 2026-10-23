@@ -19,6 +19,7 @@ import {
   calculateTransactionShares,
   formatCurrency,
   formatMonthLabel,
+  parseExactNumber,
   SPLIT_TYPE_LABELS,
 } from '../utils/financeUtils';
 
@@ -32,6 +33,7 @@ interface SharedViewProps {
   onAddMember: (member: Member) => void;
   onAddSettlement: (record: SettlementRecord) => void;
   onDeleteSettlement: (id: string) => void;
+  onUpdateTransaction: (tx: Transaction) => void;
 }
 
 export const SharedView: React.FC<SharedViewProps> = ({
@@ -44,6 +46,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
   onAddMember,
   onAddSettlement,
   onDeleteSettlement,
+  onUpdateTransaction,
 }) => {
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -90,7 +93,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
     onUpdateMember({
       ...m,
       name: editName.trim() || m.name,
-      monthlyIncome: Math.max(0, parseFloat(editIncome) || 0),
+      monthlyIncome: Math.max(0, parseExactNumber(editIncome)),
     });
     setEditingMemberId(null);
   };
@@ -104,7 +107,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
       name: newMemberName.trim(),
       role: 'Participante',
       avatarColor: colors[members.length % colors.length],
-      monthlyIncome: parseFloat(newMemberIncome) || 0,
+      monthlyIncome: Math.max(0, parseExactNumber(newMemberIncome)),
     });
     setNewMemberName('');
     setShowAddMember(false);
@@ -158,6 +161,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
             </label>
             <input
               type="number"
+              step="0.01"
               value={newMemberIncome}
               onChange={(e) => setNewMemberIncome(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
@@ -177,8 +181,8 @@ export const SharedView: React.FC<SharedViewProps> = ({
         {summaries.map((sum) => {
           const incomeWeight =
             totalHouseholdIncome > 0
-              ? ((sum.member.monthlyIncome / totalHouseholdIncome) * 100).toFixed(1)
-              : (100 / members.length).toFixed(1);
+              ? ((sum.member.monthlyIncome / totalHouseholdIncome) * 100).toFixed(2)
+              : (100 / members.length).toFixed(2);
 
           const isEditing = editingMemberId === sum.member.id;
 
@@ -240,6 +244,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
                   </label>
                   <input
                     type="number"
+                    step="0.01"
                     value={editIncome}
                     onChange={(e) => setEditIncome(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
@@ -448,8 +453,11 @@ export const SharedView: React.FC<SharedViewProps> = ({
             <tbody className="divide-y divide-slate-800/70">
               {expenses.map((tx) => {
                 const shares = calculateTransactionShares(tx, members);
-                const payer = memberMap[tx.paidById];
                 const card = tx.cardId ? cardMap[tx.cardId] : undefined;
+                const currentSplitSelectValue =
+                  tx.splitType === 'individual'
+                    ? `indiv:${tx.beneficiaryId || tx.paidById}`
+                    : tx.splitType;
 
                 return (
                   <tr key={tx.id} className="hover:bg-slate-800/40 transition">
@@ -462,21 +470,72 @@ export const SharedView: React.FC<SharedViewProps> = ({
                       )}
                     </td>
                     <td className="py-3 px-4 text-slate-300">
-                      {payer?.name.split(' ')[0]}
+                      <select
+                        value={tx.paidById}
+                        onChange={(e) =>
+                          onUpdateTransaction({
+                            ...tx,
+                            paidById: e.target.value,
+                          })
+                        }
+                        className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                      >
+                        {members.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            Pago por: {m.name.split(' ')[0]}
+                          </option>
+                        ))}
+                      </select>
                       {card && (
-                        <span className="text-slate-500"> ({card.name})</span>
+                        <span className="text-slate-500 ml-1">({card.name})</span>
                       )}
                     </td>
                     <td className="py-3 px-4">
-                      <span
-                        className={`px-2 py-0.5 rounded-md text-[11px] font-medium ${
+                      <select
+                        value={currentSplitSelectValue}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val.startsWith('indiv:')) {
+                            const targetMemberId = val.replace('indiv:', '');
+                            onUpdateTransaction({
+                              ...tx,
+                              splitType: 'individual',
+                              beneficiaryId: targetMemberId,
+                              paidById:
+                                tx.paymentMethod === 'credit_card'
+                                  ? tx.paidById
+                                  : targetMemberId,
+                            });
+                          } else {
+                            onUpdateTransaction({
+                              ...tx,
+                              splitType: val as Transaction['splitType'],
+                              beneficiaryId: undefined,
+                            });
+                          }
+                        }}
+                        className={`rounded-lg px-2 py-1 text-xs font-medium border focus:outline-none ${
                           tx.splitType === 'individual'
-                            ? 'bg-slate-800 text-slate-300'
-                            : 'bg-emerald-500/15 text-emerald-300'
+                            ? 'bg-slate-950 border-slate-700 text-slate-200'
+                            : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
                         }`}
                       >
-                        {SPLIT_TYPE_LABELS[tx.splitType]}
-                      </span>
+                        <option value="shared_equal" className="bg-slate-900 text-white">
+                          {SPLIT_TYPE_LABELS.shared_equal}
+                        </option>
+                        <option value="shared_proportional" className="bg-slate-900 text-white">
+                          {SPLIT_TYPE_LABELS.shared_proportional}
+                        </option>
+                        {members.map((m) => (
+                          <option
+                            key={m.id}
+                            value={`indiv:${m.id}`}
+                            className="bg-slate-900 text-white"
+                          >
+                            100% Individual de {m.name.split(' ')[0]}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="py-3 px-4 text-right font-bold text-white">
                       {formatCurrency(tx.amount)}

@@ -253,7 +253,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span>Comprometimento da renda:</span>
               <span className="font-semibold text-slate-200">
                 {effectiveIncome > 0
-                  ? `${((totalExpenses / effectiveIncome) * 100).toFixed(0)}%`
+                  ? `${((totalExpenses / effectiveIncome) * 100).toFixed(2)}%`
                   : '0%'}
               </span>
             </div>
@@ -399,10 +399,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         : 'hover:bg-slate-800/40'
                     }`}
                   >
-                    <span className="text-[11px] font-semibold text-slate-300 mb-1.5">
-                      {stat.total > 0
-                        ? `R$ ${(stat.total / 1000).toFixed(1)}k`
-                        : 'R$ 0'}
+                    <span className="text-[10px] font-semibold text-slate-300 mb-1.5 text-center leading-tight">
+                      {formatCurrency(stat.total)}
                     </span>
                     <div className="w-full max-w-[44px] h-36 bg-slate-950 rounded-lg overflow-hidden flex flex-col justify-end p-0.5 border border-slate-800/80">
                       {stat.single > 0 && (

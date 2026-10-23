@@ -12,6 +12,7 @@ import { Category, CreditCard, Member, Transaction } from '../types/finance';
 import {
   formatCurrency,
   formatMonthLabel,
+  parseExactNumber,
   SPLIT_TYPE_LABELS,
 } from '../utils/financeUtils';
 
@@ -117,7 +118,7 @@ export const CardsView: React.FC<CardsViewProps> = ({
       name: cardName.trim(),
       brand: cardBrand,
       color: cardColor,
-      limit: parseFloat(cardLimit) || 5000,
+      limit: parseExactNumber(cardLimit) || 5000,
       closingDay: Math.min(31, Math.max(1, parseInt(closingDay, 10) || 5)),
       dueDay: Math.min(31, Math.max(1, parseInt(dueDay, 10) || 12)),
       holderId: holderId || members[0]?.id || 'm1',
@@ -154,6 +155,26 @@ export const CardsView: React.FC<CardsViewProps> = ({
       </div>
 
       {/* Grid de Cartões Visuais */}
+      {cardStats.length === 0 ? (
+        <div className="bg-slate-900/90 border border-dashed border-slate-700 rounded-2xl p-8 text-center space-y-3">
+          <CreditCardIcon className="w-8 h-8 text-violet-400 mx-auto" />
+          <div>
+            <h3 className="text-sm font-bold text-white">
+              Nenhum cartão de crédito cadastrado ainda
+            </h3>
+            <p className="text-xs text-slate-400 mt-1">
+              Cadastre seus cartões reais para controlar fechamento, vencimento, faturas e parcelas.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowNewCardModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition"
+          >
+            <Plus className="w-4 h-4" />
+            Cadastrar Meu Primeiro Cartão
+          </button>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {cardStats.map(
           ({
@@ -209,7 +230,7 @@ export const CardsView: React.FC<CardsViewProps> = ({
                     <span className="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-md">
                       Fecha dia {card.closingDay} • Vence {card.dueDay}
                     </span>
-                    {cards.length > 1 && (
+                    {cards.length > 0 && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -298,7 +319,7 @@ export const CardsView: React.FC<CardsViewProps> = ({
                     />
                   </div>
                   <div className="flex justify-between text-[10px] text-slate-500">
-                    <span>{usagePct.toFixed(0)}% do limite tomado</span>
+                    <span>{usagePct.toFixed(2)}% do limite tomado</span>
                     <span>Limite Total: {formatCurrency(card.limit)}</span>
                   </div>
                 </div>
@@ -307,6 +328,7 @@ export const CardsView: React.FC<CardsViewProps> = ({
           }
         )}
       </div>
+      )}
 
       {/* Filtro rápido de cartão */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -556,6 +578,7 @@ export const CardsView: React.FC<CardsViewProps> = ({
                   </label>
                   <input
                     type="number"
+                    step="0.01"
                     required
                     value={cardLimit}
                     onChange={(e) => setCardLimit(e.target.value)}
