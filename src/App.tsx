@@ -370,6 +370,21 @@ export function App() {
     }));
   };
 
+  const handleDeleteMember = (memberId: string) => {
+    const member = state.members.find((m) => m.id === memberId);
+    if (
+      !window.confirm(
+        `Deseja remover o participante "${member?.name || ''}" da divisão?`
+      )
+    ) {
+      return;
+    }
+    setState((prev) => ({
+      ...prev,
+      members: prev.members.filter((m) => m.id !== memberId),
+    }));
+  };
+
   const handleAddSettlement = (record: SettlementRecord) => {
     setState((prev) => ({
       ...prev,
@@ -689,6 +704,7 @@ export function App() {
             settlements={state.settlements}
             onUpdateMember={handleUpdateMember}
             onAddMember={handleAddMember}
+            onDeleteMember={handleDeleteMember}
             onAddSettlement={handleAddSettlement}
             onDeleteSettlement={handleDeleteSettlement}
             onUpdateTransaction={(updatedTx) => {
@@ -699,6 +715,11 @@ export function App() {
                 ),
               }));
             }}
+            onEditTransaction={(tx) => {
+              setEditingTx(tx);
+              setIsTxModalOpen(true);
+            }}
+            onDeleteTransaction={handleDeleteTransaction}
           />
         )}
 

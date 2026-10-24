@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import {
   ArrowRight,
   CheckCircle2,
+  Edit2,
   Edit3,
   Scale,
   Sparkles,
+  Trash2,
   UserPlus,
   Users,
 } from 'lucide-react';
@@ -31,9 +33,12 @@ interface SharedViewProps {
   settlements: SettlementRecord[];
   onUpdateMember: (member: Member) => void;
   onAddMember: (member: Member) => void;
+  onDeleteMember: (memberId: string) => void;
   onAddSettlement: (record: SettlementRecord) => void;
   onDeleteSettlement: (id: string) => void;
   onUpdateTransaction: (tx: Transaction) => void;
+  onEditTransaction: (tx: Transaction) => void;
+  onDeleteTransaction: (tx: Transaction, deleteGroup: boolean) => void;
 }
 
 export const SharedView: React.FC<SharedViewProps> = ({
@@ -44,9 +49,12 @@ export const SharedView: React.FC<SharedViewProps> = ({
   settlements,
   onUpdateMember,
   onAddMember,
+  onDeleteMember,
   onAddSettlement,
   onDeleteSettlement,
   onUpdateTransaction,
+  onEditTransaction,
+  onDeleteTransaction,
 }) => {
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -227,13 +235,24 @@ export const SharedView: React.FC<SharedViewProps> = ({
                     Salvar
                   </button>
                 ) : (
-                  <button
-                    onClick={() => startEditingMember(sum.member)}
-                    className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800"
-                    title="Editar nome e renda"
-                  >
-                    <Edit3 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => startEditingMember(sum.member)}
+                      className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
+                      title="Alterar nome e renda"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    {members.length > 1 && (
+                      <button
+                        onClick={() => onDeleteMember(sum.member.id)}
+                        className="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition"
+                        title="Excluir participante"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -449,6 +468,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
                     Parte de {m.name.split(' ')[0]}
                   </th>
                 ))}
+                <th className="py-3 px-4 font-medium text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">
@@ -586,6 +606,35 @@ export const SharedView: React.FC<SharedViewProps> = ({
                         {formatCurrency(shares[m.id] || 0)}
                       </td>
                     ))}
+                    <td className="py-3 px-4 text-right">
+                      <div className="inline-flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onEditTransaction(tx)}
+                          title="Alterar lançamento completo"
+                          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (tx.groupId && (tx.installmentTotal || 1) > 1) {
+                              const confirmAll = window.confirm(
+                                `Esta despesa faz parte de um parcelamento (${tx.installmentCurrent}/${tx.installmentTotal}).\n\nClique em OK para excluir TODAS as parcelas desta compra, ou Cancelar para excluir apenas a parcela deste mês.`
+                              );
+                              onDeleteTransaction(tx, confirmAll);
+                            } else {
+                              onDeleteTransaction(tx, false);
+                            }
+                          }}
+                          title="Deletar lançamento"
+                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
