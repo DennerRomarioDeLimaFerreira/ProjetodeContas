@@ -77,8 +77,14 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           return false;
         }
       }
-      if (filterMember !== 'all' && tx.paidById !== filterMember) {
-        return false;
+      if (filterMember !== 'all') {
+        const ownerId = tx.beneficiaryId || tx.paidById;
+        if (tx.type === 'expense' && tx.splitType !== 'individual') {
+          return false;
+        }
+        if (ownerId !== filterMember) {
+          return false;
+        }
       }
       if (filterSplit !== 'all') {
         if (filterSplit === 'shared' && tx.splitType === 'individual') {
@@ -185,10 +191,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             onChange={(e) => setFilterMember(e.target.value)}
             className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
           >
-            <option value="all">Pago por: Qualquer Membro</option>
+            <option value="all">De quem é: Todos os Membros</option>
             {members.map((m) => (
               <option key={m.id} value={m.id}>
-                Pago por: {m.name}
+                De: {m.name}
               </option>
             ))}
           </select>
@@ -250,8 +256,12 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             {filtered.map((tx) => {
               const cat = categoryMap[tx.categoryId];
               const card = tx.cardId ? cardMap[tx.cardId] : undefined;
-              const payer = memberMap[tx.paidById];
+              const ownerMember =
+                memberMap[tx.beneficiaryId || tx.paidById];
+              const ownerName = ownerMember?.name || 'Membro';
               const isInstallment = (tx.installmentTotal || 1) > 1;
+              const isIndividual =
+                tx.type === 'income' || tx.splitType === 'individual';
 
               return (
                 <div
@@ -295,8 +305,36 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                           <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-violet-500/20 text-violet-300 border border-violet-500/30 px-2 py-0.5 rounded-full">
                             <Layers className="w-3 h-3" />
                             Parcela {tx.installmentCurrent}/{tx.installmentTotal}
+                            {' • '}
+                            {isIndividual ? ownerName : 'Compartilhado'}
                           </span>
                         )}
+
+                        <span
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border"
+                          style={
+                            isIndividual
+                              ? {
+                                  backgroundColor: `${
+                                    ownerMember?.avatarColor || '#10b981'
+                                  }20`,
+                                  color: ownerMember?.avatarColor || '#34d399',
+                                  borderColor: `${
+                                    ownerMember?.avatarColor || '#10b981'
+                                  }40`,
+                                }
+                              : {
+                                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                  color: '#6ee7b7',
+                                  borderColor: 'rgba(16, 185, 129, 0.3)',
+                                }
+                          }
+                        >
+                          <Users className="w-3 h-3" />
+                          {isIndividual
+                            ? ownerName
+                            : SPLIT_TYPE_LABELS[tx.splitType]}
+                        </span>
 
                         {tx.isRecurring && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-cyan-500/15 text-cyan-300 px-2 py-0.5 rounded-full">
@@ -322,22 +360,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                           )}
                         </span>
                         <span>•</span>
-                        <span>Pago por {payer?.name.split(' ')[0]}</span>
-                        {tx.type === 'expense' && (
-                          <>
-                            <span>•</span>
-                            <span
-                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] ${
-                                tx.splitType === 'individual'
-                                  ? 'bg-slate-800 text-slate-300'
-                                  : 'bg-emerald-500/15 text-emerald-300'
-                              }`}
-                            >
-                              <Users className="w-3 h-3" />
-                              {SPLIT_TYPE_LABELS[tx.splitType]}
-                            </span>
-                          </>
-                        )}
+                        <span className="text-slate-200 font-medium">
+                          {isIndividual
+                            ? `De: ${ownerName}`
+                            : SPLIT_TYPE_LABELS[tx.splitType]}
+                        </span>
                       </div>
                     </div>
                   </div>

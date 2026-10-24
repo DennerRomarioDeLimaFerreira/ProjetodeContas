@@ -406,8 +406,13 @@ export const CardsView: React.FC<CardsViewProps> = ({
                         <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
                           <span>{card?.name}</span>
                           <span>•</span>
-                          <span className="text-emerald-400">
-                            {SPLIT_TYPE_LABELS[tx.splitType]}
+                          <span className="text-emerald-400 font-medium">
+                            {tx.splitType === 'individual'
+                              ? `De: ${
+                                  memberMap[tx.beneficiaryId || tx.paidById]
+                                    ?.name || 'Membro'
+                                }`
+                              : SPLIT_TYPE_LABELS[tx.splitType]}
                           </span>
                         </div>
                       </div>
