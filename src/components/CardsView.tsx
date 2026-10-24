@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   CheckCircle2,
   CreditCard as CreditCardIcon,
+  Edit2,
   Layers,
   Plus,
   Repeat,
@@ -24,6 +25,7 @@ interface CardsViewProps {
   monthTransactions: Transaction[];
   allTransactions: Transaction[];
   onAddCard: (card: CreditCard) => void;
+  onUpdateCard: (card: CreditCard) => void;
   onDeleteCard: (cardId: string) => void;
   onPayCardInvoice: (cardId: string, month: string) => void;
   onOpenNewTransactionWithCard: (cardId: string) => void;
@@ -37,14 +39,16 @@ export const CardsView: React.FC<CardsViewProps> = ({
   monthTransactions,
   allTransactions,
   onAddCard,
+  onUpdateCard,
   onDeleteCard,
   onPayCardInvoice,
   onOpenNewTransactionWithCard,
 }) => {
   const [selectedCardId, setSelectedCardId] = useState<string | 'all'>('all');
   const [showNewCardModal, setShowNewCardModal] = useState(false);
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
 
-  // Form Novo Cartão
+  // Form Novo / Editar Cartão
   const [cardName, setCardName] = useState('');
   const [cardBrand, setCardBrand] = useState('Nubank');
   const [cardLimit, setCardLimit] = useState('8000');
@@ -53,6 +57,32 @@ export const CardsView: React.FC<CardsViewProps> = ({
   const [holderId, setHolderId] = useState(members[0]?.id || 'm1');
   const [cardColor, setCardColor] = useState('#820ad1');
   const [lastDigits, setLastDigits] = useState('');
+
+  const openNewCardModal = () => {
+    setEditingCardId(null);
+    setCardName('');
+    setCardBrand('Nubank');
+    setCardLimit('8000');
+    setClosingDay('5');
+    setDueDay('12');
+    setHolderId(members[0]?.id || 'm1');
+    setCardColor('#820ad1');
+    setLastDigits('');
+    setShowNewCardModal(true);
+  };
+
+  const openEditCardModal = (card: CreditCard) => {
+    setEditingCardId(card.id);
+    setCardName(card.name);
+    setCardBrand(card.brand || 'Nubank');
+    setCardLimit(String(card.limit));
+    setClosingDay(String(card.closingDay));
+    setDueDay(String(card.dueDay));
+    setHolderId(card.holderId || members[0]?.id || 'm1');
+    setCardColor(card.color || '#820ad1');
+    setLastDigits(card.lastDigits || '');
+    setShowNewCardModal(true);
+  };
 
   const memberMap = Object.fromEntries(members.map((m) => [m.id, m]));
   const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c]));
@@ -113,8 +143,8 @@ export const CardsView: React.FC<CardsViewProps> = ({
   const handleCreateCard = (e: React.FormEvent) => {
     e.preventDefault();
     if (!cardName.trim()) return;
-    const newCard: CreditCard = {
-      id: `card-${Date.now()}`,
+    const savedCard: CreditCard = {
+      id: editingCardId || `card-${Date.now()}`,
       name: cardName.trim(),
       brand: cardBrand,
       color: cardColor,
@@ -124,9 +154,14 @@ export const CardsView: React.FC<CardsViewProps> = ({
       holderId: holderId || members[0]?.id || 'm1',
       lastDigits: lastDigits.trim() || String(Math.floor(1000 + Math.random() * 9000)),
     };
-    onAddCard(newCard);
+    if (editingCardId) {
+      onUpdateCard(savedCard);
+    } else {
+      onAddCard(savedCard);
+    }
     setCardName('');
     setLastDigits('');
+    setEditingCardId(null);
     setShowNewCardModal(false);
   };
 
@@ -146,7 +181,7 @@ export const CardsView: React.FC<CardsViewProps> = ({
         </div>
 
         <button
-          onClick={() => setShowNewCardModal(true)}
+          onClick={openNewCardModal}
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold shadow-lg shadow-violet-600/20 transition"
         >
           <Plus className="w-4 h-4" />
@@ -167,7 +202,7 @@ export const CardsView: React.FC<CardsViewProps> = ({
             </p>
           </div>
           <button
-            onClick={() => setShowNewCardModal(true)}
+            onClick={openNewCardModal}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition"
           >
             <Plus className="w-4 h-4" />
@@ -230,6 +265,17 @@ export const CardsView: React.FC<CardsViewProps> = ({
                     <span className="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-md">
                       Fecha dia {card.closingDay} • Vence {card.dueDay}
                     </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditCardModal(card);
+                      }}
+                      title="Alterar / Editar cartão"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
                     {cards.length > 0 && (
                       <button
                         type="button"
@@ -238,7 +284,7 @@ export const CardsView: React.FC<CardsViewProps> = ({
                           onDeleteCard(card.id);
                         }}
                         title="Remover cartão"
-                        className="p-1 text-slate-500 hover:text-rose-400 transition"
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -535,12 +581,14 @@ export const CardsView: React.FC<CardsViewProps> = ({
         </div>
       </div>
 
-      {/* Modal de Novo Cartão */}
+      {/* Modal de Novo / Alterar Cartão */}
       {showNewCardModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto">
             <h3 className="text-base font-bold text-white">
-              Cadastrar Cartão de Crédito
+              {editingCardId
+                ? 'Alterar Cartão de Crédito'
+                : 'Cadastrar Cartão de Crédito'}
             </h3>
             <form onSubmit={handleCreateCard} className="space-y-4">
               <div>
@@ -669,7 +717,10 @@ export const CardsView: React.FC<CardsViewProps> = ({
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setShowNewCardModal(false)}
+                  onClick={() => {
+                    setEditingCardId(null);
+                    setShowNewCardModal(false);
+                  }}
                   className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white"
                 >
                   Cancelar
@@ -678,7 +729,7 @@ export const CardsView: React.FC<CardsViewProps> = ({
                   type="submit"
                   className="px-4 py-2 rounded-xl text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white"
                 >
-                  Salvar Cartão
+                  {editingCardId ? 'Salvar Alterações' : 'Salvar Cartão'}
                 </button>
               </div>
             </form>

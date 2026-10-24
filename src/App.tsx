@@ -323,6 +323,15 @@ export function App() {
     }));
   };
 
+  const handleUpdateCard = (updatedCard: CreditCard) => {
+    setState((prev) => ({
+      ...prev,
+      cards: prev.cards.map((c) =>
+        c.id === updatedCard.id ? updatedCard : c
+      ),
+    }));
+  };
+
   const handleDeleteCard = (cardId: string) => {
     if (
       !window.confirm(
@@ -661,6 +670,7 @@ export function App() {
             monthTransactions={monthTransactions}
             allTransactions={state.transactions}
             onAddCard={handleAddCard}
+            onUpdateCard={handleUpdateCard}
             onDeleteCard={handleDeleteCard}
             onPayCardInvoice={handlePayCardInvoice}
             onOpenNewTransactionWithCard={() => {
