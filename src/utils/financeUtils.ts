@@ -119,7 +119,8 @@ export function calculateTransactionShares(
   }
 
   if (tx.splitType === 'individual') {
-    const targetId = tx.beneficiaryId || tx.paidById || members[0].id;
+    const targetId =
+      tx.beneficiaryId || tx.usedById || tx.paidById || members[0].id;
     shares[targetId] = tx.amount;
     return shares;
   }

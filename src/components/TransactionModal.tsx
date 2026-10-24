@@ -75,6 +75,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [cardId, setCardId] = useState('');
   const [installments, setInstallments] = useState(1);
   const [paidById, setPaidById] = useState('');
+  const [usedById, setUsedById] = useState('');
   const [splitType, setSplitType] = useState<SplitType>('shared_equal');
   const [beneficiaryId, setBeneficiaryId] = useState('');
   const [customPct1, setCustomPct1] = useState(50);
@@ -108,13 +109,15 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setCardId(editingTransaction.cardId || cards[0]?.id || '');
       setInstallments(editingTransaction.installmentTotal || 1);
       setPaidById(editingTransaction.paidById);
-      setSplitType(editingTransaction.splitType);
-      setBeneficiaryId(
+      const initialUsedBy =
+        editingTransaction.usedById ||
         editingTransaction.beneficiaryId ||
-          editingTransaction.paidById ||
-          members[0]?.id ||
-          ''
-      );
+        editingTransaction.paidById ||
+        members[0]?.id ||
+        '';
+      setUsedById(initialUsedBy);
+      setSplitType(editingTransaction.splitType);
+      setBeneficiaryId(initialUsedBy);
       if (editingTransaction.customSplits && members.length >= 2) {
         setCustomPct1(editingTransaction.customSplits[members[0].id] ?? 50);
       } else {
@@ -140,9 +143,11 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setPaymentMethod(defaultCard ? 'credit_card' : 'pix');
       setCardId(defaultCard?.id || '');
       setInstallments(1);
-      setPaidById(defaultCard?.holderId || members[0]?.id || '');
+      const initialOwner = defaultCard?.holderId || members[0]?.id || '';
+      setPaidById(initialOwner);
+      setUsedById(initialOwner);
       setSplitType('shared_equal');
-      setBeneficiaryId(defaultCard?.holderId || members[0]?.id || '');
+      setBeneficiaryId(initialOwner);
       setCustomPct1(50);
       setIsRecurring(false);
       setRecurringMonths(6);
@@ -213,8 +218,13 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       type === 'income'
         ? paidById
         : splitType === 'individual'
-        ? beneficiaryId
+        ? beneficiaryId || usedById || paidById
         : undefined;
+
+    const effectiveUsedBy =
+      type === 'expense'
+        ? usedById || beneficiaryId || paidById
+        : paidById;
 
     // Se estamos editando apenas esta parcela isolada (sem recriar parcelamento e sem projetar novos meses recorrentes)
     if (
@@ -235,6 +245,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         paymentMethod,
         cardId: paymentMethod === 'credit_card' ? cardId : undefined,
         paidById,
+        usedById: effectiveUsedBy,
         splitType: type === 'income' ? 'individual' : splitType,
         beneficiaryId: effectiveBeneficiary,
         customSplits,
@@ -268,6 +279,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           paymentMethod,
           cardId: paymentMethod === 'credit_card' ? cardId : undefined,
           paidById,
+          usedById: effectiveUsedBy,
           splitType,
           beneficiaryId: effectiveBeneficiary,
           customSplits,
@@ -295,6 +307,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           paymentMethod,
           cardId: paymentMethod === 'credit_card' ? cardId : undefined,
           paidById,
+          usedById: effectiveUsedBy,
           splitType: type === 'income' ? 'individual' : splitType,
           beneficiaryId: effectiveBeneficiary,
           customSplits,
@@ -317,6 +330,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         paymentMethod,
         cardId: paymentMethod === 'credit_card' ? cardId : undefined,
         paidById,
+        usedById: effectiveUsedBy,
         splitType: type === 'income' ? 'individual' : splitType,
         beneficiaryId: effectiveBeneficiary,
         customSplits,
@@ -572,6 +586,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       value={paidById}
                       onChange={(e) => {
                         setPaidById(e.target.value);
+                        setUsedById(e.target.value);
                         setBeneficiaryId(e.target.value);
                       }}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
@@ -585,6 +600,52 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* Dono do Cartão vs Pessoa que Utilizou o Cartão */}
+              {paymentMethod === 'credit_card' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-800/80">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1.5">
+                      Dono do Cartão (Quem Paga a Fatura)
+                    </label>
+                    <select
+                      value={paidById}
+                      onChange={(e) => setPaidById(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                    >
+                      {members.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          Dono do Cartão: {m.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-emerald-300 mb-1.5">
+                      Quem Utilizou o Cartão nesta compra?
+                    </label>
+                    <select
+                      value={usedById || beneficiaryId || paidById}
+                      onChange={(e) => {
+                        const newUser = e.target.value;
+                        setUsedById(newUser);
+                        setBeneficiaryId(newUser);
+                        if (newUser !== paidById) {
+                          setSplitType('individual');
+                        }
+                      }}
+                      className="w-full bg-slate-900 border border-emerald-500/40 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                    >
+                      {members.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          Utilizado por: {m.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
 
               {/* Parcelamento no Cartão (Disponível na Inclusão e na Alteração!) */}
               {paymentMethod === 'credit_card' && (
@@ -772,13 +833,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 <div className="pt-2 space-y-2">
                   <div>
                     <label className="block text-xs text-slate-300 font-medium mb-1">
-                      De quem é este gasto individual (quem deve arcar com 100%)?
+                      Pessoa que utilizou / De quem é este gasto individual (100%)?
                     </label>
                     <select
-                      value={beneficiaryId}
+                      value={beneficiaryId || usedById || paidById}
                       onChange={(e) => {
                         const newBeneficiary = e.target.value;
                         setBeneficiaryId(newBeneficiary);
+                        setUsedById(newBeneficiary);
                         if (paymentMethod !== 'credit_card') {
                           setPaidById(newBeneficiary);
                         }

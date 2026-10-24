@@ -256,8 +256,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             {filtered.map((tx) => {
               const cat = categoryMap[tx.categoryId];
               const card = tx.cardId ? cardMap[tx.cardId] : undefined;
+              const cardOwnerMember = memberMap[tx.paidById];
+              const cardOwnerName =
+                cardOwnerMember?.name.split(' ')[0] || 'Titular';
               const ownerMember =
-                memberMap[tx.beneficiaryId || tx.paidById];
+                memberMap[tx.usedById || tx.beneficiaryId || tx.paidById];
               const ownerName = ownerMember?.name || 'Membro';
               const isInstallment = (tx.installmentTotal || 1) > 1;
               const isIndividual =
@@ -353,7 +356,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                           {tx.paymentMethod === 'credit_card' && card ? (
                             <span className="text-violet-300 font-medium flex items-center gap-1">
                               <CreditCardIcon className="w-3 h-3" />
-                              {card.name}
+                              {card.name} (Dono: {cardOwnerName})
                             </span>
                           ) : (
                             PAYMENT_METHOD_LABELS[tx.paymentMethod]
@@ -361,7 +364,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                         </span>
                         <span>•</span>
                         <span className="text-slate-200 font-medium">
-                          {isIndividual
+                          {tx.paymentMethod === 'credit_card'
+                            ? `Utilizado por: ${ownerName}`
+                            : isIndividual
                             ? `De: ${ownerName}`
                             : SPLIT_TYPE_LABELS[tx.splitType]}
                         </span>

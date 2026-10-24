@@ -49,7 +49,8 @@ export interface Transaction {
   categoryId: string;
   paymentMethod: PaymentMethod;
   cardId?: string; // Obrigatório se paymentMethod === 'credit_card'
-  paidById: string; // Member ID que realizou o pagamento (ou titular do cartão)
+  paidById: string; // Member ID dono do cartão / quem pagou a fatura
+  usedById?: string; // Member ID da pessoa que utilizou o cartão na compra
   splitType: SplitType;
   beneficiaryId?: string; // Member ID responsável quando splitType === 'individual'
   customSplits?: Record<string, number>; // Member ID -> porcentagem (0-100)

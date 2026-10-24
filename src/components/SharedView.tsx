@@ -260,7 +260,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
                   </span>
                 </div>
                 <div className="flex justify-between text-slate-400">
-                  <span>Desembolsou / Passou no Cartão:</span>
+                  <span>Dono do Cartão / Pagou Fatura:</span>
                   <span className="text-white font-semibold">
                     {formatCurrency(sum.paidOutOfPocket)}
                   </span>
@@ -272,8 +272,8 @@ export const SharedView: React.FC<SharedViewProps> = ({
                   </span>
                 </div>
                 <div className="flex justify-between text-slate-400">
-                  <span>Gastos Individuais Próprios:</span>
-                  <span className="text-slate-300">
+                  <span>Utilizou o Cartão (100% Individual):</span>
+                  <span className="text-violet-300 font-medium">
                     {formatCurrency(sum.individualResponsibility)}
                   </span>
                 </div>
@@ -436,11 +436,12 @@ export const SharedView: React.FC<SharedViewProps> = ({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left border-collapse text-xs">
+          <table className="w-full min-w-[820px] text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-slate-800 text-slate-400 bg-slate-950/60">
                 <th className="py-3 px-4 font-medium">Despesa</th>
-                <th className="py-3 px-4 font-medium">Quem Pagou / Cartão</th>
+                <th className="py-3 px-4 font-medium">Dono do Cartão / Pagador</th>
+                <th className="py-3 px-4 font-medium">Quem Utilizou o Cartão</th>
                 <th className="py-3 px-4 font-medium">Regra de Divisão</th>
                 <th className="py-3 px-4 font-medium text-right">Valor Total</th>
                 {members.map((m) => (
@@ -454,9 +455,11 @@ export const SharedView: React.FC<SharedViewProps> = ({
               {expenses.map((tx) => {
                 const shares = calculateTransactionShares(tx, members);
                 const card = tx.cardId ? cardMap[tx.cardId] : undefined;
+                const effectiveUsedBy =
+                  tx.usedById || tx.beneficiaryId || tx.paidById;
                 const currentSplitSelectValue =
                   tx.splitType === 'individual'
-                    ? `indiv:${tx.beneficiaryId || tx.paidById}`
+                    ? `indiv:${effectiveUsedBy}`
                     : tx.splitType;
 
                 return (
@@ -470,25 +473,59 @@ export const SharedView: React.FC<SharedViewProps> = ({
                       )}
                     </td>
                     <td className="py-3 px-4 text-slate-300">
+                      <div className="flex flex-col gap-1">
+                        <select
+                          value={tx.paidById}
+                          onChange={(e) =>
+                            onUpdateTransaction({
+                              ...tx,
+                              paidById: e.target.value,
+                            })
+                          }
+                          className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                        >
+                          {members.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {tx.paymentMethod === 'credit_card'
+                                ? `Dono do Cartão: ${m.name.split(' ')[0]}`
+                                : `Pago por: ${m.name.split(' ')[0]}`}
+                            </option>
+                          ))}
+                        </select>
+                        {card && (
+                          <span className="text-[10px] text-violet-300 font-medium">
+                            Cartão: {card.name}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-slate-300">
                       <select
-                        value={tx.paidById}
-                        onChange={(e) =>
+                        value={effectiveUsedBy}
+                        onChange={(e) => {
+                          const selectedUserId = e.target.value;
                           onUpdateTransaction({
                             ...tx,
-                            paidById: e.target.value,
-                          })
-                        }
-                        className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                            usedById: selectedUserId,
+                            beneficiaryId: selectedUserId,
+                            splitType:
+                              selectedUserId !== tx.paidById
+                                ? 'individual'
+                                : tx.splitType,
+                          });
+                        }}
+                        className="bg-slate-950 border border-violet-500/40 rounded-lg px-2 py-1 text-xs text-violet-200 font-medium focus:outline-none focus:border-violet-400"
                       >
                         {members.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            Pago por: {m.name.split(' ')[0]}
+                          <option
+                            key={m.id}
+                            value={m.id}
+                            className="bg-slate-900 text-white"
+                          >
+                            Utilizado por: {m.name.split(' ')[0]}
                           </option>
                         ))}
                       </select>
-                      {card && (
-                        <span className="text-slate-500 ml-1">({card.name})</span>
-                      )}
                     </td>
                     <td className="py-3 px-4">
                       <select
@@ -500,6 +537,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
                             onUpdateTransaction({
                               ...tx,
                               splitType: 'individual',
+                              usedById: targetMemberId,
                               beneficiaryId: targetMemberId,
                               paidById:
                                 tx.paymentMethod === 'credit_card'
@@ -532,7 +570,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
                             value={`indiv:${m.id}`}
                             className="bg-slate-900 text-white"
                           >
-                            100% Individual de {m.name.split(' ')[0]}
+                            100% de quem utilizou ({m.name.split(' ')[0]})
                           </option>
                         ))}
                       </select>
