@@ -52,6 +52,8 @@ export interface Transaction {
   paidById: string; // Member ID dono do cartão / quem pagou a fatura
   usedById?: string; // Member ID da pessoa que utilizou o cartão na compra
   splitType: SplitType;
+  splitCount?: number; // Quantidade de pessoas que vão dividir esta parcela (1, 2, 3, 4...)
+  participantIds?: string[]; // Quais membros participam da divisão desta despesa
   beneficiaryId?: string; // Member ID responsável quando splitType === 'individual'
   customSplits?: Record<string, number>; // Member ID -> porcentagem (0-100)
   installmentCurrent?: number; // ex: 1

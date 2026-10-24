@@ -118,33 +118,54 @@ export function calculateTransactionShares(
     return shares;
   }
 
+  const validParticipantIds = (tx.participantIds || []).filter((id) =>
+    members.some((m) => m.id === id)
+  );
+  const activeMembers =
+    validParticipantIds.length > 0
+      ? members.filter((m) => validParticipantIds.includes(m.id))
+      : members;
+
   if (tx.splitType === 'individual') {
     const targetId =
       tx.beneficiaryId || tx.usedById || tx.paidById || members[0].id;
-    shares[targetId] = tx.amount;
+    const divisor =
+      tx.splitCount && tx.splitCount > 1 ? tx.splitCount : 1;
+    shares[targetId] = tx.amount / divisor;
     return shares;
   }
 
   if (tx.splitType === 'shared_equal') {
-    const perMember = tx.amount / members.length;
-    members.forEach((m) => {
+    const baseCount = Math.max(1, activeMembers.length);
+    const divisor =
+      tx.splitCount && tx.splitCount >= baseCount ? tx.splitCount : baseCount;
+    const perMember = tx.amount / divisor;
+    activeMembers.forEach((m) => {
       shares[m.id] = perMember;
     });
     return shares;
   }
 
   if (tx.splitType === 'shared_proportional') {
-    const totalIncome = members.reduce((acc, m) => acc + (m.monthlyIncome || 0), 0);
+    const totalIncome = activeMembers.reduce(
+      (acc, m) => acc + (m.monthlyIncome || 0),
+      0
+    );
+    const baseCount = Math.max(1, activeMembers.length);
+    const divisor =
+      tx.splitCount && tx.splitCount >= baseCount ? tx.splitCount : baseCount;
+    const householdPool = (tx.amount * baseCount) / divisor;
+
     if (totalIncome <= 0) {
-      const perMember = tx.amount / members.length;
-      members.forEach((m) => {
+      const perMember = householdPool / baseCount;
+      activeMembers.forEach((m) => {
         shares[m.id] = perMember;
       });
       return shares;
     }
-    members.forEach((m) => {
+    activeMembers.forEach((m) => {
       const weight = (m.monthlyIncome || 0) / totalIncome;
-      shares[m.id] = tx.amount * weight;
+      shares[m.id] = householdPool * weight;
     });
     return shares;
   }
@@ -152,8 +173,8 @@ export function calculateTransactionShares(
   if (tx.splitType === 'shared_custom' && tx.customSplits) {
     const totalPct = Object.values(tx.customSplits).reduce((a, b) => a + b, 0);
     if (totalPct <= 0) {
-      const perMember = tx.amount / members.length;
-      members.forEach((m) => {
+      const perMember = tx.amount / Math.max(1, activeMembers.length);
+      activeMembers.forEach((m) => {
         shares[m.id] = perMember;
       });
       return shares;
@@ -166,8 +187,8 @@ export function calculateTransactionShares(
   }
 
   // Fallback
-  const perMember = tx.amount / members.length;
-  members.forEach((m) => {
+  const perMember = tx.amount / Math.max(1, activeMembers.length);
+  activeMembers.forEach((m) => {
     shares[m.id] = perMember;
   });
   return shares;
@@ -204,12 +225,14 @@ export function calculateMonthlySettlement(
   const expenses = transactions.filter((t) => t.type === 'expense');
 
   const paidMap: Record<string, number> = {};
+  const settledPaidMap: Record<string, number> = {};
   const fairShareMap: Record<string, number> = {};
   const sharedRespMap: Record<string, number> = {};
   const individualRespMap: Record<string, number> = {};
 
   members.forEach((m) => {
     paidMap[m.id] = 0;
+    settledPaidMap[m.id] = 0;
     fairShareMap[m.id] = 0;
     sharedRespMap[m.id] = 0;
     individualRespMap[m.id] = 0;
@@ -220,11 +243,14 @@ export function calculateMonthlySettlement(
 
   expenses.forEach((tx) => {
     const payerId = tx.paidById || members[0]?.id;
+    const shares = calculateTransactionShares(tx, members);
+    const assignedTotal = Object.values(shares).reduce((a, b) => a + b, 0);
+
     if (payerId && paidMap[payerId] !== undefined) {
       paidMap[payerId] += tx.amount;
+      settledPaidMap[payerId] += assignedTotal;
     }
 
-    const shares = calculateTransactionShares(tx, members);
     if (tx.splitType === 'individual') {
       totalIndividualExpenses += tx.amount;
     } else {
@@ -247,13 +273,18 @@ export function calculateMonthlySettlement(
     alreadySettledAmountForPair.forEach((s) => {
       if (paidMap[s.fromId] !== undefined) paidMap[s.fromId] += s.amount;
       if (paidMap[s.toId] !== undefined) paidMap[s.toId] -= s.amount;
+      if (settledPaidMap[s.fromId] !== undefined)
+        settledPaidMap[s.fromId] += s.amount;
+      if (settledPaidMap[s.toId] !== undefined)
+        settledPaidMap[s.toId] -= s.amount;
     });
   }
 
   const summaries: MemberBalanceSummary[] = members.map((m) => {
     const paidOutOfPocket = paidMap[m.id] || 0;
+    const effectivePaidForSettlement = settledPaidMap[m.id] || 0;
     const fairShareResponsibility = fairShareMap[m.id] || 0;
-    const netBalance = paidOutOfPocket - fairShareResponsibility;
+    const netBalance = effectivePaidForSettlement - fairShareResponsibility;
     return {
       member: m,
       paidOutOfPocket,

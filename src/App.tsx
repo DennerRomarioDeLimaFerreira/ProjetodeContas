@@ -765,6 +765,7 @@ export function App() {
         }}
         onSaveTransactions={handleSaveTransactions}
         onAddCategory={handleAddCategory}
+        onAddMember={handleAddMember}
         categories={state.categories}
         cards={state.cards}
         members={state.members}

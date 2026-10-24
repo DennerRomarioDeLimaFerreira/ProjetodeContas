@@ -548,52 +548,96 @@ export const SharedView: React.FC<SharedViewProps> = ({
                       </select>
                     </td>
                     <td className="py-3 px-4">
-                      <select
-                        value={currentSplitSelectValue}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val.startsWith('indiv:')) {
-                            const targetMemberId = val.replace('indiv:', '');
-                            onUpdateTransaction({
-                              ...tx,
-                              splitType: 'individual',
-                              usedById: targetMemberId,
-                              beneficiaryId: targetMemberId,
-                              paidById:
-                                tx.paymentMethod === 'credit_card'
-                                  ? tx.paidById
-                                  : targetMemberId,
-                            });
-                          } else {
-                            onUpdateTransaction({
-                              ...tx,
-                              splitType: val as Transaction['splitType'],
-                              beneficiaryId: undefined,
-                            });
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={
+                            tx.splitCount ||
+                            (tx.splitType === 'individual'
+                              ? 1
+                              : Math.max(2, members.length))
                           }
-                        }}
-                        className={`rounded-lg px-2 py-1 text-xs font-medium border focus:outline-none ${
-                          tx.splitType === 'individual'
-                            ? 'bg-slate-950 border-slate-700 text-slate-200'
-                            : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-                        }`}
-                      >
-                        <option value="shared_equal" className="bg-slate-900 text-white">
-                          {SPLIT_TYPE_LABELS.shared_equal}
-                        </option>
-                        <option value="shared_proportional" className="bg-slate-900 text-white">
-                          {SPLIT_TYPE_LABELS.shared_proportional}
-                        </option>
-                        {members.map((m) => (
-                          <option
-                            key={m.id}
-                            value={`indiv:${m.id}`}
-                            className="bg-slate-900 text-white"
-                          >
-                            100% de quem utilizou ({m.name.split(' ')[0]})
+                          onChange={(e) => {
+                            const count = Number(e.target.value);
+                            if (count === 1) {
+                              onUpdateTransaction({
+                                ...tx,
+                                splitCount: 1,
+                                splitType: 'individual',
+                                beneficiaryId: effectiveUsedBy,
+                                participantIds: [effectiveUsedBy],
+                              });
+                            } else {
+                              onUpdateTransaction({
+                                ...tx,
+                                splitCount: count,
+                                splitType:
+                                  tx.splitType === 'individual'
+                                    ? 'shared_equal'
+                                    : tx.splitType,
+                                participantIds: members.map((m) => m.id),
+                              });
+                            }
+                          }}
+                          title="Quantas pessoas vão pagar esta parcela"
+                          className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs font-bold text-emerald-300 focus:outline-none focus:border-emerald-500"
+                        >
+                          {[1, 2, 3, 4, 5, 6, 8, 10].map((n) => (
+                            <option key={n} value={n} className="bg-slate-900 text-white">
+                              {n} {n === 1 ? 'pessoa' : 'pessoas'}
+                            </option>
+                          ))}
+                        </select>
+
+                        <select
+                          value={currentSplitSelectValue}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val.startsWith('indiv:')) {
+                              const targetMemberId = val.replace('indiv:', '');
+                              onUpdateTransaction({
+                                ...tx,
+                                splitType: 'individual',
+                                splitCount: 1,
+                                usedById: targetMemberId,
+                                beneficiaryId: targetMemberId,
+                                participantIds: [targetMemberId],
+                                paidById:
+                                  tx.paymentMethod === 'credit_card'
+                                    ? tx.paidById
+                                    : targetMemberId,
+                              });
+                            } else {
+                              onUpdateTransaction({
+                                ...tx,
+                                splitType: val as Transaction['splitType'],
+                                splitCount: Math.max(2, tx.splitCount || members.length),
+                                beneficiaryId: undefined,
+                              });
+                            }
+                          }}
+                          className={`rounded-lg px-2 py-1 text-xs font-medium border focus:outline-none ${
+                            tx.splitType === 'individual'
+                              ? 'bg-slate-950 border-slate-700 text-slate-200'
+                              : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                          }`}
+                        >
+                          <option value="shared_equal" className="bg-slate-900 text-white">
+                            {SPLIT_TYPE_LABELS.shared_equal}
                           </option>
-                        ))}
-                      </select>
+                          <option value="shared_proportional" className="bg-slate-900 text-white">
+                            {SPLIT_TYPE_LABELS.shared_proportional}
+                          </option>
+                          {members.map((m) => (
+                            <option
+                              key={m.id}
+                              value={`indiv:${m.id}`}
+                              className="bg-slate-900 text-white"
+                            >
+                              100% de quem utilizou ({m.name.split(' ')[0]})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-right font-bold text-white">
                       {formatCurrency(tx.amount)}

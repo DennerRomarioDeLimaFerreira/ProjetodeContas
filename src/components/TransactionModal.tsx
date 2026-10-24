@@ -1,12 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Calculator,
   Calendar,
+  Check,
   CreditCard as CreditCardIcon,
   DollarSign,
   Layers,
   Plus,
   Repeat,
   Tag,
+  UserPlus,
   Users,
   X,
 } from 'lucide-react';
@@ -21,6 +24,7 @@ import {
 } from '../types/finance';
 import {
   addMonths,
+  calculateTransactionShares,
   computeFirstCompetenceMonth,
   formatCurrency,
   formatMonthLabel,
@@ -43,6 +47,7 @@ interface TransactionModalProps {
     meta?: SaveTransactionsMeta
   ) => void;
   onAddCategory?: (category: Category) => void;
+  onAddMember?: (member: Member) => void;
   categories: Category[];
   cards: CreditCard[];
   members: Member[];
@@ -55,6 +60,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   onClose,
   onSaveTransactions,
   onAddCategory,
+  onAddMember,
   categories,
   cards,
   members,
@@ -65,6 +71,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [showInlineCat, setShowInlineCat] = useState(false);
   const [inlineCatName, setInlineCatName] = useState('');
   const [inlineCatColor, setInlineCatColor] = useState('#10b981');
+
+  const [showInlineMember, setShowInlineMember] = useState(false);
+  const [inlineMemberName, setInlineMemberName] = useState('');
+  const [inlineMemberIncome, setInlineMemberIncome] = useState('0');
 
   const [description, setDescription] = useState('');
   const [amountInput, setAmountInput] = useState('');
@@ -77,8 +87,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [paidById, setPaidById] = useState('');
   const [usedById, setUsedById] = useState('');
   const [splitType, setSplitType] = useState<SplitType>('shared_equal');
+  const [splitCount, setSplitCount] = useState<number>(2);
+  const [participantIds, setParticipantIds] = useState<string[]>([]);
   const [beneficiaryId, setBeneficiaryId] = useState('');
-  const [customPct1, setCustomPct1] = useState(50);
+  const [customSplitsMap, setCustomSplitsMap] = useState<Record<string, number>>({});
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringMonths, setRecurringMonths] = useState(6);
   const [isPaid, setIsPaid] = useState(false);
@@ -97,6 +109,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     prevEditingIdRef.current = currentEditingId;
 
     if (!justOpened && !switchedTx) return;
+
+    const allMemberIds = members.map((m) => m.id);
 
     if (editingTransaction) {
       setType(editingTransaction.type);
@@ -118,11 +132,35 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setUsedById(initialUsedBy);
       setSplitType(editingTransaction.splitType);
       setBeneficiaryId(initialUsedBy);
-      if (editingTransaction.customSplits && members.length >= 2) {
-        setCustomPct1(editingTransaction.customSplits[members[0].id] ?? 50);
+
+      const savedParticipants =
+        editingTransaction.participantIds &&
+        editingTransaction.participantIds.length > 0
+          ? editingTransaction.participantIds
+          : editingTransaction.splitType === 'individual'
+          ? [initialUsedBy]
+          : allMemberIds;
+      setParticipantIds(savedParticipants);
+
+      const savedSplitCount =
+        editingTransaction.splitCount && editingTransaction.splitCount > 0
+          ? editingTransaction.splitCount
+          : editingTransaction.splitType === 'individual'
+          ? 1
+          : Math.max(2, savedParticipants.length);
+      setSplitCount(savedSplitCount);
+
+      if (editingTransaction.customSplits) {
+        setCustomSplitsMap(editingTransaction.customSplits);
       } else {
-        setCustomPct1(50);
+        const equalPct = Number((100 / Math.max(1, allMemberIds.length)).toFixed(2));
+        const initMap: Record<string, number> = {};
+        allMemberIds.forEach((id) => {
+          initMap[id] = equalPct;
+        });
+        setCustomSplitsMap(initMap);
       }
+
       setIsRecurring(Boolean(editingTransaction.isRecurring));
       setRecurringMonths(1);
       setIsPaid(editingTransaction.isPaid);
@@ -147,8 +185,17 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setPaidById(initialOwner);
       setUsedById(initialOwner);
       setSplitType('shared_equal');
+      setSplitCount(Math.max(2, allMemberIds.length));
+      setParticipantIds(allMemberIds);
       setBeneficiaryId(initialOwner);
-      setCustomPct1(50);
+
+      const equalPct = Number((100 / Math.max(1, allMemberIds.length)).toFixed(2));
+      const initMap: Record<string, number> = {};
+      allMemberIds.forEach((id) => {
+        initMap[id] = equalPct;
+      });
+      setCustomSplitsMap(initMap);
+
       setIsRecurring(false);
       setRecurringMonths(6);
       setIsPaid(false);
@@ -188,11 +235,98 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     selectedCard
   );
 
+  const activeParticipantIds =
+    participantIds.length > 0 ? participantIds : members.map((m) => m.id);
+
+  // Construção de transação prévia para exibir a memória de cálculo exata em tempo real no modal
+  const effectiveBeneficiary =
+    type === 'income'
+      ? paidById
+      : splitType === 'individual'
+      ? beneficiaryId || usedById || paidById
+      : undefined;
+
+  const effectiveUsedBy =
+    type === 'expense' ? usedById || beneficiaryId || paidById : paidById;
+
+  const previewTransaction: Transaction = {
+    id: 'preview',
+    description: description || 'Prévia',
+    amount: perInstallmentAmount > 0 ? perInstallmentAmount : 0,
+    totalPurchaseAmount: totalPurchaseValue > 0 ? totalPurchaseValue : undefined,
+    date,
+    competenceMonth: firstCompetence,
+    type,
+    categoryId: categoryId || filteredCategories[0]?.id || '',
+    paymentMethod,
+    cardId: paymentMethod === 'credit_card' ? cardId : undefined,
+    paidById,
+    usedById: effectiveUsedBy,
+    splitType: type === 'income' ? 'individual' : splitType,
+    splitCount: Math.max(1, splitCount),
+    participantIds:
+      splitType === 'individual'
+        ? [effectiveBeneficiary || paidById]
+        : activeParticipantIds,
+    beneficiaryId: effectiveBeneficiary,
+    customSplits: splitType === 'shared_custom' ? customSplitsMap : undefined,
+    isPaid,
+  };
+
+  const liveShares = calculateTransactionShares(previewTransaction, members);
+  const effectiveDivisor =
+    splitType === 'individual'
+      ? Math.max(1, splitCount)
+      : Math.max(splitCount, activeParticipantIds.length, 1);
+  const valuePerPersonInInstallment =
+    perInstallmentAmount > 0 ? perInstallmentAmount / effectiveDivisor : 0;
+
   const handleCardChange = (newCardId: string) => {
     setCardId(newCardId);
     const card = cards.find((c) => c.id === newCardId);
     if (card) {
       setPaidById(card.holderId);
+    }
+  };
+
+  const handleSelectPeopleCount = (count: number) => {
+    const safeCount = Math.max(1, count);
+    setSplitCount(safeCount);
+    if (safeCount === 1) {
+      setSplitType('individual');
+      const target = beneficiaryId || usedById || paidById || members[0]?.id || '';
+      setBeneficiaryId(target);
+      setParticipantIds(target ? [target] : []);
+    } else {
+      if (splitType === 'individual') {
+        setSplitType('shared_equal');
+      }
+      if (participantIds.length < 2) {
+        setParticipantIds(members.slice(0, safeCount).map((m) => m.id));
+      }
+    }
+  };
+
+  const toggleParticipant = (memberId: string) => {
+    const exists = activeParticipantIds.includes(memberId);
+    let next: string[];
+    if (exists) {
+      if (activeParticipantIds.length <= 1) return; // manter ao menos 1 participante
+      next = activeParticipantIds.filter((id) => id !== memberId);
+    } else {
+      next = [...activeParticipantIds, memberId];
+    }
+    setParticipantIds(next);
+    if (next.length === 1) {
+      setSplitType('individual');
+      setSplitCount(1);
+      setBeneficiaryId(next[0]);
+      setUsedById(next[0]);
+    } else {
+      if (splitType === 'individual') {
+        setSplitType('shared_equal');
+      }
+      setSplitCount(Math.max(next.length, splitCount));
     }
   };
 
@@ -207,24 +341,17 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       : description.trim();
 
     const customSplits: Record<string, number> | undefined =
-      splitType === 'shared_custom' && members.length >= 2
-        ? {
-            [members[0].id]: customPct1,
-            [members[1].id]: 100 - customPct1,
-          }
-        : undefined;
+      splitType === 'shared_custom' ? customSplitsMap : undefined;
 
-    const effectiveBeneficiary =
-      type === 'income'
-        ? paidById
-        : splitType === 'individual'
-        ? beneficiaryId || usedById || paidById
-        : undefined;
+    const finalParticipantIds =
+      splitType === 'individual'
+        ? [effectiveBeneficiary || paidById]
+        : activeParticipantIds;
 
-    const effectiveUsedBy =
-      type === 'expense'
-        ? usedById || beneficiaryId || paidById
-        : paidById;
+    const finalSplitCount =
+      splitType === 'individual'
+        ? Math.max(1, splitCount)
+        : Math.max(splitCount, finalParticipantIds.length, 1);
 
     // Se estamos editando apenas esta parcela isolada (sem recriar parcelamento e sem projetar novos meses recorrentes)
     if (
@@ -247,6 +374,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         paidById,
         usedById: effectiveUsedBy,
         splitType: type === 'income' ? 'individual' : splitType,
+        splitCount: finalSplitCount,
+        participantIds: finalParticipantIds,
         beneficiaryId: effectiveBeneficiary,
         customSplits,
         isRecurring,
@@ -281,6 +410,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           paidById,
           usedById: effectiveUsedBy,
           splitType,
+          splitCount: finalSplitCount,
+          participantIds: finalParticipantIds,
           beneficiaryId: effectiveBeneficiary,
           customSplits,
           installmentCurrent: i,
@@ -299,7 +430,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               : `tx-${Date.now()}-rec-${i}`,
           groupId: baseGroupId,
           description: cleanDescription,
-          amount: numericAmount,
+          amount: perInstallmentAmount,
           date,
           competenceMonth: compMonth,
           type,
@@ -309,6 +440,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           paidById,
           usedById: effectiveUsedBy,
           splitType: type === 'income' ? 'individual' : splitType,
+          splitCount: finalSplitCount,
+          participantIds: finalParticipantIds,
           beneficiaryId: effectiveBeneficiary,
           customSplits,
           isRecurring: true,
@@ -320,7 +453,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       generated.push({
         id: editingTransaction ? editingTransaction.id : `tx-${Date.now()}`,
         description: cleanDescription,
-        amount: numericAmount,
+        amount: perInstallmentAmount,
         date,
         competenceMonth: editingTransaction
           ? editingTransaction.competenceMonth
@@ -332,6 +465,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         paidById,
         usedById: effectiveUsedBy,
         splitType: type === 'income' ? 'individual' : splitType,
+        splitCount: finalSplitCount,
+        participantIds: finalParticipantIds,
         beneficiaryId: effectiveBeneficiary,
         customSplits,
         isRecurring,
@@ -451,7 +586,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 {effectiveInstallments > 1 && amountMode === 'total'
                   ? 'Valor Total da Compra (R$)'
                   : effectiveInstallments > 1
-                  ? 'Valor de Cada Parcela (R$)'
+                  ? `Valor de Cada Parcela (1/${effectiveInstallments}) (R$)`
                   : 'Valor (R$)'}
               </label>
               <input
@@ -536,7 +671,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </div>
           </div>
 
-          {/* Forma de Pagamento & Cartão (Exatamente igual na Inclusão e na Alteração!) */}
+          {/* Forma de Pagamento & Cartão */}
           {type === 'expense' && (
             <div className="space-y-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -633,6 +768,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                         setBeneficiaryId(newUser);
                         if (newUser !== paidById) {
                           setSplitType('individual');
+                          setSplitCount(1);
+                          setParticipantIds([newUser]);
                         }
                       }}
                       className="w-full bg-slate-900 border border-emerald-500/40 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
@@ -647,7 +784,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 </div>
               )}
 
-              {/* Parcelamento no Cartão (Disponível na Inclusão e na Alteração!) */}
+              {/* Parcelamento no Cartão */}
               {paymentMethod === 'credit_card' && (
                 <div className="pt-2 border-t border-slate-800/80 space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
@@ -680,29 +817,97 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       <div className="flex gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
                         <button
                           type="button"
-                          onClick={() => setAmountMode('total')}
+                          onClick={() => {
+                            if (amountMode === 'installment' && numericAmount > 0) {
+                              setAmountInput(
+                                String(
+                                  Number((numericAmount * installments).toFixed(2))
+                                )
+                              );
+                            }
+                            setAmountMode('total');
+                          }}
                           className={`flex-1 py-2 px-2 rounded-lg font-medium transition ${
                             amountMode === 'total'
                               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : 'text-slate-400'
+                              : 'text-slate-400 hover:text-slate-200'
                           }`}
                         >
-                          Informei Total
+                          Valor Digitado = Total
                         </button>
                         <button
                           type="button"
-                          onClick={() => setAmountMode('installment')}
+                          onClick={() => {
+                            if (amountMode === 'total' && numericAmount > 0) {
+                              setAmountInput(
+                                String(
+                                  Number((numericAmount / installments).toFixed(2))
+                                )
+                              );
+                            }
+                            setAmountMode('installment');
+                          }}
                           className={`flex-1 py-2 px-2 rounded-lg font-medium transition ${
                             amountMode === 'installment'
                               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : 'text-slate-400'
+                              : 'text-slate-400 hover:text-slate-200'
                           }`}
                         >
-                          Informei Parcela
+                          Valor Digitado = Parcela
                         </button>
                       </div>
                     )}
                   </div>
+
+                  {/* Dois campos sincronizados quando parcelado para zero erro de cálculo */}
+                  {installments > 1 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-900/90 p-3 rounded-xl border border-violet-500/30">
+                      <div>
+                        <label className="block text-[11px] text-slate-400 mb-1">
+                          Valor Total da Compra ({installments}x)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={
+                            amountMode === 'total'
+                              ? amountInput
+                              : totalPurchaseValue > 0
+                              ? Number(totalPurchaseValue.toFixed(2))
+                              : ''
+                          }
+                          onChange={(e) => {
+                            setAmountMode('total');
+                            setAmountInput(e.target.value);
+                          }}
+                          placeholder="0,00"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-violet-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-violet-300 font-semibold mb-1">
+                          Valor de Cada Parcela Mensal (1/{installments})
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={
+                            amountMode === 'installment'
+                              ? amountInput
+                              : perInstallmentAmount > 0
+                              ? Number(perInstallmentAmount.toFixed(2))
+                              : ''
+                          }
+                          onChange={(e) => {
+                            setAmountMode('installment');
+                            setAmountInput(e.target.value);
+                          }}
+                          placeholder="0,00"
+                          className="w-full bg-slate-950 border border-violet-500/50 rounded-lg px-3 py-1.5 text-xs font-bold text-violet-200 focus:outline-none focus:border-violet-400"
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   {editingTransaction &&
                     (editingTransaction.installmentTotal || 1) > 1 && (
@@ -749,91 +954,147 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </div>
           )}
 
-          {/* Finanças Compartilhadas: Regra de Divisão */}
+          {/* Divisão da Parcela & Quantas Pessoas Vão Pagar */}
           {type === 'expense' ? (
-            <div className="space-y-3 bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+            <div className="space-y-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="text-xs font-bold text-white flex items-center gap-1.5">
                   <Users className="w-4 h-4 text-emerald-400" />
-                  Divisão entre os Membros (Finanças Compartilhadas)
+                  Quantas pessoas vão pagar / dividir esta parcela?
                 </label>
+                {onAddMember && (
+                  <button
+                    type="button"
+                    onClick={() => setShowInlineMember(!showInlineMember)}
+                    className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" /> + Adicionar Pessoa
+                  </button>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSplitType('shared_equal')}
-                  className={`p-2.5 rounded-xl border text-left transition ${
-                    splitType === 'shared_equal'
-                      ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
-                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <div className="text-xs font-semibold">
-                    Compartilhado 50 / 50
+              {/* Criar nova pessoa inline sem sair do modal */}
+              {showInlineMember && onAddMember && (
+                <div className="p-3 rounded-xl bg-slate-900 border border-emerald-500/40 flex flex-col sm:flex-row items-end gap-2">
+                  <div className="flex-1 w-full">
+                    <label className="block text-[11px] text-slate-400 mb-1">
+                      Nome da Pessoa / Participante
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Mãe, Irmão, Amigo..."
+                      value={inlineMemberName}
+                      onChange={(e) => setInlineMemberName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                    />
                   </div>
-                  <div className="text-[11px] opacity-75">
-                    Divisão igual para cada um
+                  <div className="w-full sm:w-36">
+                    <label className="block text-[11px] text-slate-400 mb-1">
+                      Renda Base (R$)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={inlineMemberIncome}
+                      onChange={(e) => setInlineMemberIncome(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                    />
                   </div>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!inlineMemberName.trim()) return;
+                      const palette = [
+                        '#06b6d4',
+                        '#f59e0b',
+                        '#ec4899',
+                        '#3b82f6',
+                        '#a855f7',
+                      ];
+                      const newMember: Member = {
+                        id: `m-${Date.now()}`,
+                        name: inlineMemberName.trim(),
+                        role: 'Participante',
+                        avatarColor: palette[members.length % palette.length],
+                        monthlyIncome: Math.max(
+                          0,
+                          parseExactNumber(inlineMemberIncome)
+                        ),
+                      };
+                      onAddMember(newMember);
+                      const nextParticipants = [
+                        ...activeParticipantIds,
+                        newMember.id,
+                      ];
+                      setParticipantIds(nextParticipants);
+                      setSplitCount(Math.max(splitCount, nextParticipants.length));
+                      setInlineMemberName('');
+                      setShowInlineMember(false);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-500 text-slate-950 font-bold text-xs shrink-0"
+                  >
+                    Incluir
+                  </button>
+                </div>
+              )}
 
-                <button
-                  type="button"
-                  onClick={() => setSplitType('shared_proportional')}
-                  className={`p-2.5 rounded-xl border text-left transition ${
-                    splitType === 'shared_proportional'
-                      ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
-                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <div className="text-xs font-semibold">
-                    Proporcional à Renda
-                  </div>
-                  <div className="text-[11px] opacity-75">
-                    Quem ganha mais paga proporcional
-                  </div>
-                </button>
+              {/* Seletor rápido de Quantidade de Pessoas (1, 2, 3, 4 ou N pessoas) */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-stretch">
+                {[
+                  { count: 1, label: '1 Pessoa', sub: '100% Individual' },
+                  { count: 2, label: '2 Pessoas', sub: '50% cada (÷ 2)' },
+                  { count: 3, label: '3 Pessoas', sub: '33,33% cada (÷ 3)' },
+                  { count: 4, label: '4 Pessoas', sub: '25% cada (÷ 4)' },
+                ].map((opt) => {
+                  const isSelected =
+                    (opt.count === 1 &&
+                      splitType === 'individual' &&
+                      splitCount === 1) ||
+                    (opt.count > 1 &&
+                      splitCount === opt.count &&
+                      splitType !== 'individual');
+                  return (
+                    <button
+                      key={opt.count}
+                      type="button"
+                      onClick={() => handleSelectPeopleCount(opt.count)}
+                      className={`p-2.5 rounded-xl border text-left transition ${
+                        isSelected
+                          ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-200'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <div className="text-xs font-bold">{opt.label}</div>
+                      <div className="text-[10px] opacity-80">{opt.sub}</div>
+                    </button>
+                  );
+                })}
 
-                <button
-                  type="button"
-                  onClick={() => setSplitType('individual')}
-                  className={`p-2.5 rounded-xl border text-left transition ${
-                    splitType === 'individual'
-                      ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
-                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <div className="text-xs font-semibold">
-                    Gasto Individual (100%)
-                  </div>
-                  <div className="text-[11px] opacity-75">
-                    Conta exclusiva de 1 pessoa
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSplitType('shared_custom')}
-                  className={`p-2.5 rounded-xl border text-left transition ${
-                    splitType === 'shared_custom'
-                      ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
-                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <div className="text-xs font-semibold">
-                    Percentual Customizado
-                  </div>
-                  <div className="text-[11px] opacity-75">
-                    Defina % manual para cada
-                  </div>
-                </button>
+                <div className="bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 flex flex-col justify-center">
+                  <label className="text-[10px] text-slate-400">
+                    Nº de Pessoas:
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={splitCount}
+                    onChange={(e) =>
+                      handleSelectPeopleCount(
+                        Math.max(1, parseInt(e.target.value, 10) || 1)
+                      )
+                    }
+                    className="w-full bg-transparent text-xs font-bold text-white focus:outline-none"
+                  />
+                </div>
               </div>
 
-              {splitType === 'individual' && (
-                <div className="pt-2 space-y-2">
+              {/* Caso 1: 1 Pessoa (Individual) ou 1 pessoa arcando com 1/N */}
+              {splitType === 'individual' ? (
+                <div className="pt-2 space-y-2 border-t border-slate-800/80">
                   <div>
                     <label className="block text-xs text-slate-300 font-medium mb-1">
-                      Pessoa que utilizou / De quem é este gasto individual (100%)?
+                      Quem vai pagar esta parcela?
                     </label>
                     <select
                       value={beneficiaryId || usedById || paidById}
@@ -841,6 +1102,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                         const newBeneficiary = e.target.value;
                         setBeneficiaryId(newBeneficiary);
                         setUsedById(newBeneficiary);
+                        setParticipantIds([newBeneficiary]);
                         if (paymentMethod !== 'credit_card') {
                           setPaidById(newBeneficiary);
                         }
@@ -849,47 +1111,204 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     >
                       {members.map((m) => (
                         <option key={m.id} value={m.id}>
-                          100% de {m.name}
+                          {splitCount > 1
+                            ? `${m.name} (paga 1/${splitCount} da parcela)`
+                            : `100% pago por ${m.name}`}
                         </option>
                       ))}
                     </select>
                   </div>
                   {paymentMethod === 'credit_card' &&
-                    paidById !== beneficiaryId && (
+                    paidById !== (beneficiaryId || usedById) && (
                       <div className="text-[11px] bg-amber-500/10 border border-amber-500/30 text-amber-200 px-3 py-2 rounded-lg">
-                        Nota: Como o cartão selecionado pertence a{' '}
+                        Reembolso automático: O cartão pertence a{' '}
                         <strong>
                           {members.find((m) => m.id === paidById)?.name}
                         </strong>
-                        , este valor entrará como reembolso devido por{' '}
+                        , então{' '}
                         <strong>
-                          {members.find((m) => m.id === beneficiaryId)?.name}
+                          {
+                            members.find(
+                              (m) => m.id === (beneficiaryId || usedById)
+                            )?.name
+                          }
                         </strong>{' '}
-                        ao titular do cartão.
+                        ficará com este valor a pagar na aba Divisão & Acerto.
                       </div>
                     )}
                 </div>
+              ) : (
+                /* Caso 2: Dividido entre 2 ou mais pessoas */
+                <div className="pt-2 space-y-3 border-t border-slate-800/80">
+                  {/* Seleção de quais membros entram na divisão */}
+                  <div>
+                    <label className="block text-xs text-slate-300 font-medium mb-1.5">
+                      Quais pessoas participam desta divisão? (Clique para marcar/desmarcar)
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {members.map((m) => {
+                        const isChecked = activeParticipantIds.includes(m.id);
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => toggleParticipant(m.id)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                              isChecked
+                                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-200'
+                                : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300'
+                            }`}
+                          >
+                            <span
+                              className={`w-4 h-4 rounded flex items-center justify-center ${
+                                isChecked
+                                  ? 'bg-emerald-500 text-slate-950'
+                                  : 'border border-slate-700'
+                              }`}
+                            >
+                              {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                            </span>
+                            <span>{m.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Regra de cálculo entre os participantes */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSplitType('shared_equal')}
+                      className={`p-2 rounded-xl border text-left transition ${
+                        splitType === 'shared_equal'
+                          ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <div className="text-xs font-semibold">
+                        Partes Iguais (÷ {effectiveDivisor})
+                      </div>
+                      <div className="text-[10px] opacity-75">
+                        Valor igual para cada pessoa
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSplitType('shared_proportional')}
+                      className={`p-2 rounded-xl border text-left transition ${
+                        splitType === 'shared_proportional'
+                          ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <div className="text-xs font-semibold">
+                        Proporcional à Renda
+                      </div>
+                      <div className="text-[10px] opacity-75">
+                        Conforme salário de cada um
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSplitType('shared_custom')}
+                      className={`p-2 rounded-xl border text-left transition ${
+                        splitType === 'shared_custom'
+                          ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <div className="text-xs font-semibold">
+                        Percentual Manual (%)
+                      </div>
+                      <div className="text-[10px] opacity-75">
+                        Defina % exata de cada pessoa
+                      </div>
+                    </button>
+                  </div>
+
+                  {splitType === 'shared_custom' && (
+                    <div className="pt-2 space-y-2 bg-slate-900/70 p-3 rounded-xl border border-slate-800">
+                      <div className="text-[11px] text-slate-400 font-medium">
+                        Defina a porcentagem (%) de cada pessoa nesta parcela:
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {members.map((m) => (
+                          <div
+                            key={m.id}
+                            className="flex items-center justify-between gap-2 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800"
+                          >
+                            <span className="text-xs text-slate-200 font-medium">
+                              {m.name}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min={0}
+                                max={100}
+                                value={customSplitsMap[m.id] ?? 0}
+                                onChange={(e) => {
+                                  const val = Math.max(
+                                    0,
+                                    parseExactNumber(e.target.value)
+                                  );
+                                  setCustomSplitsMap((prev) => ({
+                                    ...prev,
+                                    [m.id]: val,
+                                  }));
+                                }}
+                                className="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-right text-xs text-white"
+                              />
+                              <span className="text-xs text-slate-400">%</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
-              {splitType === 'shared_custom' && members.length >= 2 && (
-                <div className="pt-2 space-y-2">
-                  <div className="flex justify-between text-xs text-slate-300">
-                    <span>
-                      {members[0].name}: <strong>{customPct1}%</strong>
+              {/* Memória de Cálculo Instantânea da Parcela */}
+              {perInstallmentAmount > 0 && (
+                <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-emerald-300 flex items-center gap-1.5">
+                      <Calculator className="w-3.5 h-3.5" />
+                      Resumo do Cálculo da Parcela ({effectiveDivisor}{' '}
+                      {effectiveDivisor === 1 ? 'pessoa' : 'pessoas'})
                     </span>
-                    <span>
-                      {members[1].name}: <strong>{100 - customPct1}%</strong>
+                    <span className="text-emerald-200 font-bold">
+                      {formatCurrency(valuePerPersonInInstallment)} / pessoa
                     </span>
                   </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={customPct1}
-                    onChange={(e) => setCustomPct1(Number(e.target.value))}
-                    className="w-full accent-emerald-500"
-                  />
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {members.map((m) => {
+                      const memberShare = liveShares[m.id] || 0;
+                      return (
+                        <div
+                          key={m.id}
+                          className="flex items-center justify-between text-xs bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-800/80"
+                        >
+                          <span className="text-slate-300">{m.name}:</span>
+                          <strong
+                            className={
+                              memberShare > 0
+                                ? 'text-emerald-300'
+                                : 'text-slate-500'
+                            }
+                          >
+                            {formatCurrency(memberShare)}
+                            {effectiveInstallments > 1 ? ' / mês' : ''}
+                          </strong>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -912,7 +1331,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </div>
           )}
 
-          {/* Assinatura / Custo Fixo Recorrente (Disponível na Inclusão e na Alteração!) */}
+          {/* Assinatura / Custo Fixo Recorrente */}
           {effectiveInstallments === 1 && (
             <div className="flex items-center justify-between bg-slate-950/60 px-4 py-3 rounded-xl border border-slate-800/80">
               <label className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
