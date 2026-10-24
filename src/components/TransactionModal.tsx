@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Calendar,
   CreditCard as CreditCardIcon,
@@ -27,11 +27,21 @@ import {
   getTodayISO,
   parseExactNumber,
 } from '../utils/financeUtils';
+import { detectPII } from '../utils/lgpd';
+import { LgpdDlpBanner } from './LgpdDlpBanner';
+
+export interface SaveTransactionsMeta {
+  replaceTxId?: string;
+  replaceGroupId?: string;
+}
 
 interface TransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSaveTransactions: (newTransactions: Transaction[]) => void;
+  onSaveTransactions: (
+    newTransactions: Transaction[],
+    meta?: SaveTransactionsMeta
+  ) => void;
   onAddCategory?: (category: Category) => void;
   categories: Category[];
   cards: CreditCard[];
@@ -55,6 +65,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [showInlineCat, setShowInlineCat] = useState(false);
   const [inlineCatName, setInlineCatName] = useState('');
   const [inlineCatColor, setInlineCatColor] = useState('#10b981');
+
   const [description, setDescription] = useState('');
   const [amountInput, setAmountInput] = useState('');
   const [amountMode, setAmountMode] = useState<'total' | 'installment'>('total');
@@ -70,9 +81,21 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringMonths, setRecurringMonths] = useState(6);
   const [isPaid, setIsPaid] = useState(false);
+  const [applyToAllInstallments, setApplyToAllInstallments] = useState(true);
+
+  // Proteção QA contra reset de inputs durante sincronização em background
+  const prevOpenRef = useRef(false);
+  const prevEditingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!isOpen) return;
+    const currentEditingId = editingTransaction?.id || null;
+    const justOpened = isOpen && !prevOpenRef.current;
+    const switchedTx = isOpen && currentEditingId !== prevEditingIdRef.current;
+
+    prevOpenRef.current = isOpen;
+    prevEditingIdRef.current = currentEditingId;
+
+    if (!justOpened && !switchedTx) return;
 
     if (editingTransaction) {
       setType(editingTransaction.type);
@@ -83,12 +106,24 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setCategoryId(editingTransaction.categoryId);
       setPaymentMethod(editingTransaction.paymentMethod);
       setCardId(editingTransaction.cardId || cards[0]?.id || '');
-      setInstallments(1);
+      setInstallments(editingTransaction.installmentTotal || 1);
       setPaidById(editingTransaction.paidById);
       setSplitType(editingTransaction.splitType);
-      setBeneficiaryId(editingTransaction.beneficiaryId || members[0]?.id || '');
+      setBeneficiaryId(
+        editingTransaction.beneficiaryId ||
+          editingTransaction.paidById ||
+          members[0]?.id ||
+          ''
+      );
+      if (editingTransaction.customSplits && members.length >= 2) {
+        setCustomPct1(editingTransaction.customSplits[members[0].id] ?? 50);
+      } else {
+        setCustomPct1(50);
+      }
       setIsRecurring(Boolean(editingTransaction.isRecurring));
+      setRecurringMonths(1);
       setIsPaid(editingTransaction.isPaid);
+      setApplyToAllInstallments(true);
     } else {
       setType('expense');
       setDescription('');
@@ -107,11 +142,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setInstallments(1);
       setPaidById(defaultCard?.holderId || members[0]?.id || '');
       setSplitType('shared_equal');
-      setBeneficiaryId(members[0]?.id || '');
+      setBeneficiaryId(defaultCard?.holderId || members[0]?.id || '');
       setCustomPct1(50);
       setIsRecurring(false);
       setRecurringMonths(6);
       setIsPaid(false);
+      setApplyToAllInstallments(true);
     }
   }, [isOpen, editingTransaction, categories, cards, members, selectedMonth]);
 
@@ -159,6 +195,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     e.preventDefault();
     if (!description.trim() || numericAmount <= 0) return;
 
+    // Higienização LGPD caso ainda haja PII na descrição
+    const piiScan = detectPII(description.trim());
+    const cleanDescription = piiScan.hasPII
+      ? piiScan.sanitizedText
+      : description.trim();
+
     const customSplits: Record<string, number> | undefined =
       splitType === 'shared_custom' && members.length >= 2
         ? {
@@ -167,43 +209,56 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           }
         : undefined;
 
-    if (editingTransaction) {
+    const effectiveBeneficiary =
+      type === 'income'
+        ? paidById
+        : splitType === 'individual'
+        ? beneficiaryId
+        : undefined;
+
+    // Se estamos editando apenas esta parcela isolada (sem recriar parcelamento e sem projetar novos meses recorrentes)
+    if (
+      editingTransaction &&
+      !applyToAllInstallments &&
+      effectiveInstallments === (editingTransaction.installmentTotal || 1) &&
+      !(isRecurring && recurringMonths > 1)
+    ) {
       const updated: Transaction = {
         ...editingTransaction,
         type,
-        description: description.trim(),
-        amount: numericAmount,
+        description: cleanDescription,
+        amount: perInstallmentAmount,
+        totalPurchaseAmount:
+          effectiveInstallments > 1 ? totalPurchaseValue : undefined,
         date,
         categoryId: categoryId || filteredCategories[0]?.id || '',
         paymentMethod,
         cardId: paymentMethod === 'credit_card' ? cardId : undefined,
         paidById,
         splitType: type === 'income' ? 'individual' : splitType,
-        beneficiaryId:
-          type === 'income'
-            ? paidById
-            : splitType === 'individual'
-            ? beneficiaryId
-            : undefined,
+        beneficiaryId: effectiveBeneficiary,
         customSplits,
         isRecurring,
         isPaid: paymentMethod === 'credit_card' ? isPaid : true,
       };
-      onSaveTransactions([updated]);
+      onSaveTransactions([updated], { replaceTxId: editingTransaction.id });
       onClose();
       return;
     }
 
-    const baseGroupId = `grp-${Date.now()}`;
+    const baseGroupId = editingTransaction?.groupId || `grp-${Date.now()}`;
     const generated: Transaction[] = [];
 
     if (effectiveInstallments > 1) {
       for (let i = 1; i <= effectiveInstallments; i++) {
         const compMonth = addMonths(firstCompetence, i - 1);
         generated.push({
-          id: `tx-${Date.now()}-${i}`,
+          id:
+            editingTransaction && i === (editingTransaction.installmentCurrent || 1)
+              ? editingTransaction.id
+              : `tx-${Date.now()}-${i}`,
           groupId: baseGroupId,
-          description: description.trim(),
+          description: cleanDescription,
           amount: perInstallmentAmount,
           totalPurchaseAmount: totalPurchaseValue,
           date,
@@ -214,21 +269,24 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           cardId: paymentMethod === 'credit_card' ? cardId : undefined,
           paidById,
           splitType,
-          beneficiaryId: splitType === 'individual' ? beneficiaryId : undefined,
+          beneficiaryId: effectiveBeneficiary,
           customSplits,
           installmentCurrent: i,
           installmentTotal: effectiveInstallments,
           isRecurring: false,
-          isPaid: false,
+          isPaid: editingTransaction ? editingTransaction.isPaid && i === 1 : false,
         });
       }
     } else if (isRecurring && recurringMonths > 1) {
       for (let i = 0; i < recurringMonths; i++) {
         const compMonth = addMonths(firstCompetence, i);
         generated.push({
-          id: `tx-${Date.now()}-rec-${i}`,
+          id:
+            editingTransaction && i === 0
+              ? editingTransaction.id
+              : `tx-${Date.now()}-rec-${i}`,
           groupId: baseGroupId,
-          description: description.trim(),
+          description: cleanDescription,
           amount: numericAmount,
           date,
           competenceMonth: compMonth,
@@ -238,52 +296,53 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           cardId: paymentMethod === 'credit_card' ? cardId : undefined,
           paidById,
           splitType: type === 'income' ? 'individual' : splitType,
-          beneficiaryId:
-            type === 'income'
-              ? paidById
-              : splitType === 'individual'
-              ? beneficiaryId
-              : undefined,
+          beneficiaryId: effectiveBeneficiary,
           customSplits,
           isRecurring: true,
-          isPaid: i === 0 ? (paymentMethod === 'credit_card' ? isPaid : true) : false,
+          isPaid:
+            i === 0 ? (paymentMethod === 'credit_card' ? isPaid : true) : false,
         });
       }
     } else {
       generated.push({
-        id: `tx-${Date.now()}`,
-        description: description.trim(),
+        id: editingTransaction ? editingTransaction.id : `tx-${Date.now()}`,
+        description: cleanDescription,
         amount: numericAmount,
         date,
-        competenceMonth: firstCompetence,
+        competenceMonth: editingTransaction
+          ? editingTransaction.competenceMonth
+          : firstCompetence,
         type,
         categoryId: categoryId || filteredCategories[0]?.id || '',
         paymentMethod,
         cardId: paymentMethod === 'credit_card' ? cardId : undefined,
         paidById,
         splitType: type === 'income' ? 'individual' : splitType,
-        beneficiaryId:
-          type === 'income'
-            ? paidById
-            : splitType === 'individual'
-            ? beneficiaryId
-            : undefined,
+        beneficiaryId: effectiveBeneficiary,
         customSplits,
         isRecurring,
         isPaid: paymentMethod === 'credit_card' ? isPaid : true,
       });
     }
 
-    onSaveTransactions(generated);
+    onSaveTransactions(generated, {
+      replaceTxId: editingTransaction?.id,
+      replaceGroupId:
+        editingTransaction?.groupId && applyToAllInstallments
+          ? editingTransaction.groupId
+          : undefined,
+    });
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden my-8">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden my-8">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/80">
           <h2 className="text-lg font-semibold text-white">
-            {editingTransaction ? 'Editar Lançamento' : 'Novo Lançamento Financeiro'}
+            {editingTransaction
+              ? 'Alterar Lançamento Financeiro'
+              : 'Novo Lançamento Financeiro'}
           </h2>
           <button
             onClick={onClose}
@@ -293,7 +352,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[82vh] overflow-y-auto">
+        <form
+          onSubmit={handleSubmit}
+          className="p-6 space-y-5 max-h-[82vh] overflow-y-auto"
+        >
           {/* Tipo Despesa vs Receita */}
           <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800">
             <button
@@ -330,42 +392,52 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           </div>
 
           {/* Descrição e Data */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">
-                Descrição
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="Ex: Supermercado, TV Samsung, Jantar..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-              />
+          <div className="space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-slate-400 mb-1.5 h-5">
+                  Descrição
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Supermercado, TV Samsung, Jantar..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5 h-5">
+                  <Calendar className="w-3.5 h-3.5 inline mr-1" />
+                  Data da Compra
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">
-                <Calendar className="w-3.5 h-3.5 inline mr-1" />
-                Data da Compra
-              </label>
-              <input
-                type="date"
-                required
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
-              />
-            </div>
+
+            {/* Guardião LGPD (DLP) em tempo real */}
+            <LgpdDlpBanner
+              text={description}
+              onApplyMask={(masked) => setDescription(masked)}
+            />
           </div>
 
           {/* Valor e Categoria */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">
+              <label className="block text-xs font-medium text-slate-400 mb-1.5 h-5">
                 <DollarSign className="w-3.5 h-3.5 inline mr-1" />
                 {effectiveInstallments > 1 && amountMode === 'total'
                   ? 'Valor Total da Compra (R$)'
+                  : effectiveInstallments > 1
+                  ? 'Valor de Cada Parcela (R$)'
                   : 'Valor (R$)'}
               </label>
               <input
@@ -381,7 +453,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-1.5 h-5">
                 <label className="block text-xs font-medium text-slate-400">
                   <Tag className="w-3.5 h-3.5 inline mr-1" />
                   Categoria
@@ -450,17 +522,19 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </div>
           </div>
 
-          {/* Forma de Pagamento & Cartão */}
+          {/* Forma de Pagamento & Cartão (Exatamente igual na Inclusão e na Alteração!) */}
           {type === 'expense' && (
             <div className="space-y-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1.5">
+                  <label className="block text-xs font-medium text-slate-400 mb-1.5 h-5">
                     Método de Pagamento
                   </label>
                   <select
                     value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+                    onChange={(e) =>
+                      setPaymentMethod(e.target.value as PaymentMethod)
+                    }
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
                   >
                     <option value="credit_card">Cartão de Crédito</option>
@@ -473,7 +547,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
                 {paymentMethod === 'credit_card' ? (
                   <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1.5">
+                    <label className="block text-xs font-medium text-slate-400 mb-1.5 h-5">
                       <CreditCardIcon className="w-3.5 h-3.5 inline mr-1" />
                       Qual Cartão?
                     </label>
@@ -491,7 +565,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   </div>
                 ) : (
                   <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1.5">
+                    <label className="block text-xs font-medium text-slate-400 mb-1.5 h-5">
                       Quem realizou o pagamento?
                     </label>
                     <select
@@ -512,12 +586,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 )}
               </div>
 
-              {/* Parcelamento no Cartão */}
-              {paymentMethod === 'credit_card' && !editingTransaction && (
+              {/* Parcelamento no Cartão (Disponível na Inclusão e na Alteração!) */}
+              {paymentMethod === 'credit_card' && (
                 <div className="pt-2 border-t border-slate-800/80 space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
                     <div>
-                      <label className="block text-xs font-medium text-slate-400 mb-1.5">
+                      <label className="block text-xs font-medium text-slate-400 mb-1.5 h-5">
                         <Layers className="w-3.5 h-3.5 inline mr-1" />
                         Parcelamento
                       </label>
@@ -531,7 +605,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                         className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
                       >
                         <option value={1}>1x à vista</option>
-                        {[2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 18, 24].map((n) => (
+                        {[
+                          2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24,
+                        ].map((n) => (
                           <option key={n} value={n}>
                             {n}x sem juros
                           </option>
@@ -567,17 +643,39 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     )}
                   </div>
 
+                  {editingTransaction &&
+                    (editingTransaction.installmentTotal || 1) > 1 && (
+                      <label className="flex items-center gap-2 text-xs text-violet-200 bg-violet-500/10 border border-violet-500/30 px-3 py-2 rounded-xl cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={applyToAllInstallments}
+                          onChange={(e) =>
+                            setApplyToAllInstallments(e.target.checked)
+                          }
+                          className="accent-violet-500 w-4 h-4"
+                        />
+                        <span>
+                          Aplicar esta alteração em todas as parcelas desta compra (
+                          {editingTransaction.installmentCurrent}/
+                          {editingTransaction.installmentTotal})
+                        </span>
+                      </label>
+                    )}
+
                   {numericAmount > 0 && (
-                    <div className="text-xs bg-violet-500/10 border border-violet-500/25 text-violet-200 px-3.5 py-2.5 rounded-xl flex items-center justify-between">
+                    <div className="text-xs bg-violet-500/10 border border-violet-500/25 text-violet-200 px-3.5 py-2.5 rounded-xl flex items-center justify-between flex-wrap gap-2">
                       <span>
-                        1ª fatura: <strong>{formatMonthLabel(firstCompetence)}</strong>
+                        1ª fatura:{' '}
+                        <strong>{formatMonthLabel(firstCompetence)}</strong>
                       </span>
                       <span>
                         {installments > 1 ? (
                           <>
                             <strong>{installments}x</strong> de{' '}
-                            <strong>{formatCurrency(perInstallmentAmount)}</strong> (Total:{' '}
-                            {formatCurrency(totalPurchaseValue)})
+                            <strong>
+                              {formatCurrency(perInstallmentAmount)}
+                            </strong>{' '}
+                            (Total: {formatCurrency(totalPurchaseValue)})
                           </>
                         ) : (
                           <>À vista: {formatCurrency(numericAmount)}</>
@@ -610,8 +708,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  <div className="text-xs font-semibold">Compartilhado 50 / 50</div>
-                  <div className="text-[11px] opacity-75">Divisão igual para cada um</div>
+                  <div className="text-xs font-semibold">
+                    Compartilhado 50 / 50
+                  </div>
+                  <div className="text-[11px] opacity-75">
+                    Divisão igual para cada um
+                  </div>
                 </button>
 
                 <button
@@ -623,8 +725,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  <div className="text-xs font-semibold">Proporcional à Renda</div>
-                  <div className="text-[11px] opacity-75">Quem ganha mais paga proporcional</div>
+                  <div className="text-xs font-semibold">
+                    Proporcional à Renda
+                  </div>
+                  <div className="text-[11px] opacity-75">
+                    Quem ganha mais paga proporcional
+                  </div>
                 </button>
 
                 <button
@@ -636,8 +742,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  <div className="text-xs font-semibold">Gasto Individual (100%)</div>
-                  <div className="text-[11px] opacity-75">Conta exclusiva de 1 pessoa</div>
+                  <div className="text-xs font-semibold">
+                    Gasto Individual (100%)
+                  </div>
+                  <div className="text-[11px] opacity-75">
+                    Conta exclusiva de 1 pessoa
+                  </div>
                 </button>
 
                 <button
@@ -649,8 +759,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  <div className="text-xs font-semibold">Percentual Customizado</div>
-                  <div className="text-[11px] opacity-75">Defina % manual para cada</div>
+                  <div className="text-xs font-semibold">
+                    Percentual Customizado
+                  </div>
+                  <div className="text-[11px] opacity-75">
+                    Defina % manual para cada
+                  </div>
                 </button>
               </div>
 
@@ -678,19 +792,20 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       ))}
                     </select>
                   </div>
-                  {paymentMethod === 'credit_card' && paidById !== beneficiaryId && (
-                    <div className="text-[11px] bg-amber-500/10 border border-amber-500/30 text-amber-200 px-3 py-2 rounded-lg">
-                      Nota: Como o cartão selecionado pertence a{' '}
-                      <strong>
-                        {members.find((m) => m.id === paidById)?.name}
-                      </strong>
-                      , este valor entrará como reembolso devido por{' '}
-                      <strong>
-                        {members.find((m) => m.id === beneficiaryId)?.name}
-                      </strong>{' '}
-                      ao titular do cartão.
-                    </div>
-                  )}
+                  {paymentMethod === 'credit_card' &&
+                    paidById !== beneficiaryId && (
+                      <div className="text-[11px] bg-amber-500/10 border border-amber-500/30 text-amber-200 px-3 py-2 rounded-lg">
+                        Nota: Como o cartão selecionado pertence a{' '}
+                        <strong>
+                          {members.find((m) => m.id === paidById)?.name}
+                        </strong>
+                        , este valor entrará como reembolso devido por{' '}
+                        <strong>
+                          {members.find((m) => m.id === beneficiaryId)?.name}
+                        </strong>{' '}
+                        ao titular do cartão.
+                      </div>
+                    )}
                 </div>
               )}
 
@@ -708,7 +823,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     type="range"
                     min={0}
                     max={100}
-                    step={5}
+                    step={1}
                     value={customPct1}
                     onChange={(e) => setCustomPct1(Number(e.target.value))}
                     className="w-full accent-emerald-500"
@@ -718,7 +833,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </div>
           ) : (
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">
+              <label className="block text-xs font-medium text-slate-400 mb-1.5 h-5">
                 Membro que recebeu esta receita
               </label>
               <select
@@ -735,8 +850,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </div>
           )}
 
-          {/* Assinatura / Custo Fixo Recorrente */}
-          {effectiveInstallments === 1 && !editingTransaction && (
+          {/* Assinatura / Custo Fixo Recorrente (Disponível na Inclusão e na Alteração!) */}
+          {effectiveInstallments === 1 && (
             <div className="flex items-center justify-between bg-slate-950/60 px-4 py-3 rounded-xl border border-slate-800/80">
               <label className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
                 <input
@@ -746,7 +861,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   className="rounded border-slate-700 accent-emerald-500 w-4 h-4"
                 />
                 <Repeat className="w-4 h-4 text-purple-400" />
-                <span>Despesa/Assinatura Fixa Recorrente (projetar próximos meses)</span>
+                <span>
+                  Despesa/Assinatura Fixa Recorrente (projetar próximos meses)
+                </span>
               </label>
 
               {isRecurring && (
@@ -777,7 +894,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
               className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 transition"
             >
               {editingTransaction
-                ? 'Salvar Alterações'
+                ? effectiveInstallments > 1 && applyToAllInstallments
+                  ? `Salvar ${effectiveInstallments} Parcelas`
+                  : 'Salvar Alterações'
                 : effectiveInstallments > 1
                 ? `Lançar ${effectiveInstallments} Parcelas`
                 : 'Salvar Lançamento'}

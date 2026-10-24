@@ -276,8 +276,8 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                 </div>
 
                 {/* Tabela de Pré-visualização */}
-                <div className="border border-slate-800 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
-                  <table className="w-full text-left text-xs">
+                <div className="border border-slate-800 rounded-xl overflow-hidden max-h-64 overflow-y-auto overflow-x-auto">
+                  <table className="w-full min-w-[640px] text-left text-xs">
                     <thead className="bg-slate-950 text-slate-400 border-b border-slate-800">
                       <tr>
                         <th className="p-2.5">Incluir</th>

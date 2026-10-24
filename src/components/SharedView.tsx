@@ -436,7 +436,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full min-w-[720px] text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-slate-800 text-slate-400 bg-slate-950/60">
                 <th className="py-3 px-4 font-medium">Despesa</th>

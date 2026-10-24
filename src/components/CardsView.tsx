@@ -537,8 +537,8 @@ export const CardsView: React.FC<CardsViewProps> = ({
 
       {/* Modal de Novo Cartão */}
       {showNewCardModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto">
             <h3 className="text-base font-bold text-white">
               Cadastrar Cartão de Crédito
             </h3>

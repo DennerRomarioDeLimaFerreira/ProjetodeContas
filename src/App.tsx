@@ -10,6 +10,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Shield,
   Sparkles,
   Target,
   Users,
@@ -19,8 +20,13 @@ import { BudgetsView } from './components/BudgetsView';
 import { CardsView } from './components/CardsView';
 import { DashboardView } from './components/DashboardView';
 import { ImportExportModal } from './components/ImportExportModal';
+import { LgpdConsentModal } from './components/LgpdConsentModal';
+import { LgpdDlpBanner } from './components/LgpdDlpBanner';
 import { SharedView } from './components/SharedView';
-import { TransactionModal } from './components/TransactionModal';
+import {
+  SaveTransactionsMeta,
+  TransactionModal,
+} from './components/TransactionModal';
 import { TransactionsView } from './components/TransactionsView';
 import { createInitialFinanceState } from './data/initialData';
 import {
@@ -44,8 +50,10 @@ import {
   getTodayISO,
   parseQuickEntry,
 } from './utils/financeUtils';
+import { detectPII } from './utils/lgpd';
 
 const STORAGE_KEY = 'duofinance_state_real_v1';
+const LGPD_CONSENT_KEY = 'duofinance_lgpd_consent_v1';
 
 type ActiveTab = 'dashboard' | 'transactions' | 'cards' | 'shared' | 'budgets';
 
@@ -75,6 +83,14 @@ export function App() {
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [isImportExportOpen, setIsImportExportOpen] = useState(false);
+  const [isLgpdModalOpen, setIsLgpdModalOpen] = useState(false);
+  const [lgpdAcceptedAt, setLgpdAcceptedAt] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(LGPD_CONSENT_KEY);
+    } catch {
+      return null;
+    }
+  });
 
   // Barra de Lançamento Rápido Inteligente
   const [quickText, setQuickText] = useState('');
@@ -178,12 +194,16 @@ export function App() {
     const newTxs: Transaction[] = [];
     const perInstallment =
       quickPreview.amount / Math.max(1, quickPreview.installments);
+    const piiScan = detectPII(quickPreview.description);
+    const safeQuickDesc = piiScan.hasPII
+      ? piiScan.sanitizedText
+      : quickPreview.description;
 
     for (let i = 1; i <= quickPreview.installments; i++) {
       newTxs.push({
         id: `tx-q-${Date.now()}-${i}`,
         groupId: quickPreview.installments > 1 ? groupId : undefined,
-        description: quickPreview.description,
+        description: safeQuickDesc,
         amount: perInstallment,
         totalPurchaseAmount:
           quickPreview.installments > 1 ? quickPreview.amount : undefined,
@@ -206,12 +226,12 @@ export function App() {
 
     setState((prev) => ({
       ...prev,
-      transactions: [... newTxs, ...prev.transactions],
+      transactions: [...newTxs, ...prev.transactions],
     }));
 
     setQuickText('');
     setQuickFeedback(
-      `Lançado: ${quickPreview.description} (${
+      `Lançado: ${safeQuickDesc} (${
         quickPreview.installments > 1
           ? `${quickPreview.installments}x de ${formatCurrency(perInstallment)}`
           : formatCurrency(quickPreview.amount)
@@ -220,8 +240,41 @@ export function App() {
     setTimeout(() => setQuickFeedback(null), 4000);
   };
 
-  const handleSaveTransactions = (savedTxs: Transaction[]) => {
+  const handleSaveTransactions = (
+    savedTxs: Transaction[],
+    meta?: SaveTransactionsMeta
+  ) => {
     setState((prev) => {
+      if (meta?.replaceGroupId) {
+        const remaining = prev.transactions.filter(
+          (t) =>
+            t.groupId !== meta.replaceGroupId &&
+            (!meta.replaceTxId || t.id !== meta.replaceTxId)
+        );
+        return {
+          ...prev,
+          transactions: [...savedTxs, ...remaining],
+        };
+      }
+
+      if (meta?.replaceTxId) {
+        if (savedTxs.length === 1) {
+          return {
+            ...prev,
+            transactions: prev.transactions.map((t) =>
+              t.id === meta.replaceTxId ? savedTxs[0] : t
+            ),
+          };
+        }
+        const remaining = prev.transactions.filter(
+          (t) => t.id !== meta.replaceTxId
+        );
+        return {
+          ...prev,
+          transactions: [...savedTxs, ...remaining],
+        };
+      }
+
       if (editingTx && savedTxs.length === 1) {
         return {
           ...prev,
@@ -230,6 +283,7 @@ export function App() {
           ),
         };
       }
+
       return {
         ...prev,
         transactions: [...savedTxs, ...prev.transactions],
@@ -443,6 +497,15 @@ export function App() {
             </button>
 
             <button
+              onClick={() => setIsLgpdModalOpen(true)}
+              title="Governança LGPD & DLP Guardian Ativo"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-xs font-semibold text-emerald-300 transition"
+            >
+              <Shield className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden md:inline">LGPD</span>
+            </button>
+
+            <button
               onClick={() => setIsImportExportOpen(true)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-200 transition"
             >
@@ -547,6 +610,11 @@ export function App() {
                 </button>
               )}
             </div>
+            <LgpdDlpBanner
+              text={quickText}
+              onApplyMask={(masked: string) => setQuickText(masked)}
+              className="mt-2"
+            />
             {quickFeedback && (
               <div className="absolute right-0 -bottom-6 text-[11px] text-emerald-400 font-medium">
                 ✓ {quickFeedback}
@@ -673,6 +741,23 @@ export function App() {
           }));
         }}
         onRestoreBackup={(restored) => setState(restored)}
+      />
+
+      <LgpdConsentModal
+        isOpen={isLgpdModalOpen}
+        userName={state.members[0]?.name || 'Denner'}
+        acceptedAt={lgpdAcceptedAt}
+        onClose={() => setIsLgpdModalOpen(false)}
+        onConsentAccepted={() => {
+          const now = new Date().toISOString();
+          setLgpdAcceptedAt(now);
+          try {
+            localStorage.setItem(LGPD_CONSENT_KEY, now);
+          } catch {
+            // ignore
+          }
+          setIsLgpdModalOpen(false);
+        }}
       />
     </div>
   );
