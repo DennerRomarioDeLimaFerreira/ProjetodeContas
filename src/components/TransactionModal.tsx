@@ -95,6 +95,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [recurringMonths, setRecurringMonths] = useState(6);
   const [isPaid, setIsPaid] = useState(false);
   const [applyToAllInstallments, setApplyToAllInstallments] = useState(true);
+  const [firstCompetenceOverride, setFirstCompetenceOverride] = useState<string>('');
 
   // Proteção QA contra reset de inputs durante sincronização em background
   const prevOpenRef = useRef(false);
@@ -165,16 +166,17 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setRecurringMonths(1);
       setIsPaid(editingTransaction.isPaid);
       setApplyToAllInstallments(true);
+      const currentInst = editingTransaction.installmentCurrent || 1;
+      setFirstCompetenceOverride(
+        addMonths(editingTransaction.competenceMonth, -(currentInst - 1))
+      );
     } else {
       setType('expense');
       setDescription('');
       setAmountInput('');
       setAmountMode('total');
       const today = getTodayISO();
-      const defaultDate = today.startsWith(selectedMonth)
-        ? today
-        : `${selectedMonth}-10`;
-      setDate(defaultDate);
+      setDate(today);
       const firstExpCat = categories.find((c) => c.type !== 'income');
       setCategoryId(firstExpCat?.id || categories[0]?.id || '');
       const defaultCard = cards[0];
@@ -200,6 +202,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setRecurringMonths(6);
       setIsPaid(false);
       setApplyToAllInstallments(true);
+      setFirstCompetenceOverride(selectedMonth);
     }
   }, [isOpen, editingTransaction, categories, cards, members, selectedMonth]);
 
@@ -229,11 +232,21 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         : numericAmount * effectiveInstallments
       : numericAmount;
 
-  const firstCompetence = computeFirstCompetenceMonth(
+  const autoFirstCompetence = computeFirstCompetenceMonth(
     date,
     paymentMethod,
     selectedCard
   );
+
+  const firstCompetence = firstCompetenceOverride || autoFirstCompetence;
+
+  const competenceOptions = [-9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4].map(
+    (offset) => addMonths(selectedMonth, offset)
+  );
+  if (!competenceOptions.includes(firstCompetence)) {
+    competenceOptions.push(firstCompetence);
+    competenceOptions.sort();
+  }
 
   const activeParticipantIds =
     participantIds.length > 0 ? participantIds : members.map((m) => m.id);
@@ -334,6 +347,24 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     e.preventDefault();
     if (!description.trim() || numericAmount <= 0) return;
 
+    let resolvedCategoryId = categoryId || filteredCategories[0]?.id || '';
+    if (showInlineCat && inlineCatName.trim() && onAddCategory) {
+      const created: Category = {
+        id: `cat-${Date.now()}`,
+        name: inlineCatName.trim(),
+        icon: 'Tag',
+        color: inlineCatColor,
+        type,
+        monthlyBudget: 0,
+        essentialType: type === 'expense' ? 'needs' : 'savings',
+      };
+      onAddCategory(created);
+      resolvedCategoryId = created.id;
+      setCategoryId(created.id);
+      setInlineCatName('');
+      setShowInlineCat(false);
+    }
+
     // Higienização LGPD caso ainda haja PII na descrição
     const piiScan = detectPII(description.trim());
     const cleanDescription = piiScan.hasPII
@@ -368,7 +399,11 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         totalPurchaseAmount:
           effectiveInstallments > 1 ? totalPurchaseValue : undefined,
         date,
-        categoryId: categoryId || filteredCategories[0]?.id || '',
+        competenceMonth:
+          effectiveInstallments === 1
+            ? firstCompetence
+            : editingTransaction.competenceMonth,
+        categoryId: resolvedCategoryId,
         paymentMethod,
         cardId: paymentMethod === 'credit_card' ? cardId : undefined,
         paidById,
@@ -404,7 +439,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           date,
           competenceMonth: compMonth,
           type,
-          categoryId: categoryId || filteredCategories[0]?.id || '',
+          categoryId: resolvedCategoryId,
           paymentMethod,
           cardId: paymentMethod === 'credit_card' ? cardId : undefined,
           paidById,
@@ -438,7 +473,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           date,
           competenceMonth: compMonth,
           type,
-          categoryId: categoryId || filteredCategories[0]?.id || '',
+          categoryId: resolvedCategoryId,
           paymentMethod,
           cardId: paymentMethod === 'credit_card' ? cardId : undefined,
           paidById,
@@ -459,11 +494,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         description: cleanDescription,
         amount: perInstallmentAmount,
         date,
-        competenceMonth: editingTransaction
-          ? editingTransaction.competenceMonth
-          : firstCompetence,
+        competenceMonth: firstCompetence,
         type,
-        categoryId: categoryId || filteredCategories[0]?.id || '',
+        categoryId: resolvedCategoryId,
         paymentMethod,
         cardId: paymentMethod === 'credit_card' ? cardId : undefined,
         paidById,
@@ -569,7 +602,22 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   type="date"
                   required
                   value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  onChange={(e) => {
+                    const newDate = e.target.value;
+                    setDate(newDate);
+                    if (
+                      installments > 1 ||
+                      newDate.slice(0, 7) < getTodayISO().slice(0, 7)
+                    ) {
+                      setFirstCompetenceOverride(
+                        computeFirstCompetenceMonth(
+                          newDate,
+                          paymentMethod,
+                          selectedCard
+                        )
+                      );
+                    }
+                  }}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
@@ -802,7 +850,18 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                         onChange={(e) => {
                           const val = Number(e.target.value);
                           setInstallments(val);
-                          if (val > 1) setIsRecurring(false);
+                          if (val > 1) {
+                            setIsRecurring(false);
+                            setFirstCompetenceOverride(
+                              computeFirstCompetenceMonth(
+                                date,
+                                paymentMethod,
+                                selectedCard
+                              )
+                            );
+                          } else {
+                            setFirstCompetenceOverride(selectedMonth);
+                          }
                         }}
                         className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
                       >
@@ -817,51 +876,74 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       </select>
                     </div>
 
-                    {installments > 1 && (
-                      <div className="flex gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (amountMode === 'installment' && numericAmount > 0) {
-                              setAmountInput(
-                                String(
-                                  Number((numericAmount * installments).toFixed(2))
-                                )
-                              );
-                            }
-                            setAmountMode('total');
-                          }}
-                          className={`flex-1 py-2 px-2 rounded-lg font-medium transition ${
-                            amountMode === 'total'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : 'text-slate-400 hover:text-slate-200'
-                          }`}
-                        >
-                          Valor Digitado = Total
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (amountMode === 'total' && numericAmount > 0) {
-                              setAmountInput(
-                                String(
-                                  Number((numericAmount / installments).toFixed(2))
-                                )
-                              );
-                            }
-                            setAmountMode('installment');
-                          }}
-                          className={`flex-1 py-2 px-2 rounded-lg font-medium transition ${
-                            amountMode === 'installment'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : 'text-slate-400 hover:text-slate-200'
-                          }`}
-                        >
-                          Valor Digitado = Parcela
-                        </button>
-                      </div>
-                    )}
+                    <div>
+                      <label className="block text-xs font-medium text-emerald-300 mb-1.5 h-5">
+                        <Calendar className="w-3.5 h-3.5 inline mr-1" />
+                        {installments > 1
+                          ? 'Mês da 1ª Fatura (Parcela 1)'
+                          : 'Em qual Fatura / Mês entra?'}
+                      </label>
+                      <select
+                        value={firstCompetence}
+                        onChange={(e) =>
+                          setFirstCompetenceOverride(e.target.value)
+                        }
+                        className="w-full bg-slate-900 border border-emerald-500/40 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-emerald-200 focus:outline-none focus:border-emerald-500"
+                      >
+                        {competenceOptions.map((m) => (
+                          <option key={m} value={m}>
+                            {formatMonthLabel(m)}
+                            {m === selectedMonth ? ' (Mês atual na tela)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
+
+                  {installments > 1 && (
+                    <div className="flex gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (amountMode === 'installment' && numericAmount > 0) {
+                            setAmountInput(
+                              String(
+                                Number((numericAmount * installments).toFixed(2))
+                              )
+                            );
+                          }
+                          setAmountMode('total');
+                        }}
+                        className={`flex-1 py-2 px-2 rounded-lg font-medium transition ${
+                          amountMode === 'total'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Valor Digitado = Total
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (amountMode === 'total' && numericAmount > 0) {
+                            setAmountInput(
+                              String(
+                                Number((numericAmount / installments).toFixed(2))
+                              )
+                            );
+                          }
+                          setAmountMode('installment');
+                        }}
+                        className={`flex-1 py-2 px-2 rounded-lg font-medium transition ${
+                          amountMode === 'installment'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Valor Digitado = Parcela
+                      </button>
+                    </div>
+                  )}
 
                   {/* Dois campos sincronizados quando parcelado para zero erro de cálculo */}
                   {installments > 1 && (
