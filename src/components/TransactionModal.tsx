@@ -417,7 +417,11 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           installmentCurrent: i,
           installmentTotal: effectiveInstallments,
           isRecurring: false,
-          isPaid: editingTransaction ? editingTransaction.isPaid && i === 1 : false,
+          isPaid: editingTransaction
+            ? i === (editingTransaction.installmentCurrent || 1)
+              ? isPaid
+              : compMonth < selectedMonth
+            : compMonth < selectedMonth,
         });
       }
     } else if (isRecurring && recurringMonths > 1) {
@@ -929,24 +933,43 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     )}
 
                   {numericAmount > 0 && (
-                    <div className="text-xs bg-violet-500/10 border border-violet-500/25 text-violet-200 px-3.5 py-2.5 rounded-xl flex items-center justify-between flex-wrap gap-2">
-                      <span>
-                        1ª fatura:{' '}
-                        <strong>{formatMonthLabel(firstCompetence)}</strong>
-                      </span>
-                      <span>
-                        {installments > 1 ? (
-                          <>
-                            <strong>{installments}x</strong> de{' '}
+                    <div className="text-xs bg-violet-500/10 border border-violet-500/25 text-violet-200 px-3.5 py-2.5 rounded-xl space-y-1">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <span>
+                          1ª fatura (1/{installments}):{' '}
+                          <strong>{formatMonthLabel(firstCompetence)}</strong>
+                        </span>
+                        {installments > 1 && (
+                          <span>
+                            Última fatura ({installments}/{installments}):{' '}
                             <strong>
-                              {formatCurrency(perInstallmentAmount)}
-                            </strong>{' '}
-                            (Total: {formatCurrency(totalPurchaseValue)})
-                          </>
-                        ) : (
-                          <>À vista: {formatCurrency(numericAmount)}</>
+                              {formatMonthLabel(
+                                addMonths(firstCompetence, installments - 1)
+                              )}
+                            </strong>
+                          </span>
                         )}
-                      </span>
+                      </div>
+                      <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-violet-500/20 text-[11px] text-violet-300">
+                        <span>
+                          {selectedCard
+                            ? `Fechamento dia ${selectedCard.closingDay} (compras a partir do dia ${selectedCard.closingDay} entram no mês seguinte)`
+                            : 'Competência calculada pela data da compra'}
+                        </span>
+                        <span>
+                          {installments > 1 ? (
+                            <>
+                              <strong>{installments}x</strong> de{' '}
+                              <strong>
+                                {formatCurrency(perInstallmentAmount)}
+                              </strong>{' '}
+                              (Total: {formatCurrency(totalPurchaseValue)})
+                            </>
+                          ) : (
+                            <>À vista: {formatCurrency(numericAmount)}</>
+                          )}
+                        </span>
+                      </div>
                     </div>
                   )}
                 </div>
