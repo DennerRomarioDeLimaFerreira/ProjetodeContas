@@ -86,8 +86,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [installments, setInstallments] = useState(1);
   const [paidById, setPaidById] = useState('');
   const [usedById, setUsedById] = useState('');
-  const [splitType, setSplitType] = useState<SplitType>('shared_equal');
-  const [splitCount, setSplitCount] = useState<number>(2);
+  const [splitType, setSplitType] = useState<SplitType>('individual');
+  const [splitCount, setSplitCount] = useState<number>(1);
   const [participantIds, setParticipantIds] = useState<string[]>([]);
   const [beneficiaryId, setBeneficiaryId] = useState('');
   const [customSplitsMap, setCustomSplitsMap] = useState<Record<string, number>>({});
@@ -186,9 +186,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       const initialOwner = defaultCard?.holderId || members[0]?.id || '';
       setPaidById(initialOwner);
       setUsedById(initialOwner);
-      setSplitType('shared_equal');
-      setSplitCount(Math.max(2, allMemberIds.length));
-      setParticipantIds(allMemberIds);
+      setSplitType('individual');
+      setSplitCount(1);
+      setParticipantIds(initialOwner ? [initialOwner] : []);
       setBeneficiaryId(initialOwner);
 
       const equalPct = Number((100 / Math.max(1, allMemberIds.length)).toFixed(2));
@@ -298,7 +298,15 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     setCardId(newCardId);
     const card = cards.find((c) => c.id === newCardId);
     if (card) {
+      const wasUsingPreviousHolder = !usedById || usedById === paidById;
       setPaidById(card.holderId);
+      if (wasUsingPreviousHolder) {
+        setUsedById(card.holderId);
+        setBeneficiaryId(card.holderId);
+        if (splitType === 'individual') {
+          setParticipantIds([card.holderId]);
+        }
+      }
     }
   };
 
