@@ -86,13 +86,38 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const balance = effectiveIncome - totalExpenses;
 
-  // Dados por Categoria
-  const categoryBreakdown = categories
-    .filter((c) => c.type !== 'income')
+  // Dados por Categoria (incluindo fallback seguro para lançamentos cuja categoria foi removida)
+  const knownExpenseCatIds = new Set(
+    categories.filter((c) => c.type !== 'income').map((c) => c.id)
+  );
+  const uncategorizedSpent = monthExpenses
+    .filter((t) => !knownExpenseCatIds.has(t.categoryId))
+    .reduce((acc, t) => acc + t.amount, 0);
+
+  const effectiveExpenseCategories: Category[] =
+    uncategorizedSpent > 0
+      ? [
+          ...categories.filter((c) => c.type !== 'income'),
+          {
+            id: '__uncategorized__',
+            name: 'Outros / Sem Categoria',
+            icon: 'Tag',
+            color: '#64748b',
+            type: 'expense',
+            monthlyBudget: 0,
+            essentialType: 'wants',
+          },
+        ]
+      : categories.filter((c) => c.type !== 'income');
+
+  const categoryBreakdown = effectiveExpenseCategories
     .map((cat) => {
-      const spent = monthExpenses
-        .filter((t) => t.categoryId === cat.id)
-        .reduce((acc, t) => acc + t.amount, 0);
+      const spent =
+        cat.id === '__uncategorized__'
+          ? uncategorizedSpent
+          : monthExpenses
+              .filter((t) => t.categoryId === cat.id)
+              .reduce((acc, t) => acc + t.amount, 0);
       const pctOfTotal = totalExpenses > 0 ? (spent / totalExpenses) * 100 : 0;
       const budgetPct =
         cat.monthlyBudget > 0 ? (spent / cat.monthlyBudget) * 100 : 0;

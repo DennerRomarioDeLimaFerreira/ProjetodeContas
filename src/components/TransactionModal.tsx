@@ -53,6 +53,7 @@ interface TransactionModalProps {
   members: Member[];
   selectedMonth: string;
   editingTransaction?: Transaction | null;
+  preselectedCardId?: string | null;
 }
 
 export const TransactionModal: React.FC<TransactionModalProps> = ({
@@ -66,6 +67,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   members,
   selectedMonth,
   editingTransaction,
+  preselectedCardId,
 }) => {
   const [type, setType] = useState<TransactionType>('expense');
   const [showInlineCat, setShowInlineCat] = useState(false);
@@ -179,7 +181,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setDate(today);
       const firstExpCat = categories.find((c) => c.type !== 'income');
       setCategoryId(firstExpCat?.id || categories[0]?.id || '');
-      const defaultCard = cards[0];
+      const defaultCard =
+        (preselectedCardId
+          ? cards.find((c) => c.id === preselectedCardId)
+          : undefined) || cards[0];
       setPaymentMethod(defaultCard ? 'credit_card' : 'pix');
       setCardId(defaultCard?.id || '');
       setInstallments(1);
@@ -204,7 +209,15 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setApplyToAllInstallments(true);
       setFirstCompetenceOverride(selectedMonth);
     }
-  }, [isOpen, editingTransaction, categories, cards, members, selectedMonth]);
+  }, [
+    isOpen,
+    editingTransaction,
+    preselectedCardId,
+    categories,
+    cards,
+    members,
+    selectedMonth,
+  ]);
 
   if (!isOpen) return null;
 
@@ -690,6 +703,25 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     placeholder="Nome da categoria..."
                     value={inlineCatName}
                     onChange={(e) => setInlineCatName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (!inlineCatName.trim() || !onAddCategory) return;
+                        const created: Category = {
+                          id: `cat-${Date.now()}`,
+                          name: inlineCatName.trim(),
+                          icon: 'Tag',
+                          color: inlineCatColor,
+                          type,
+                          monthlyBudget: 0,
+                          essentialType: type === 'expense' ? 'needs' : 'savings',
+                        };
+                        onAddCategory(created);
+                        setCategoryId(created.id);
+                        setInlineCatName('');
+                        setShowInlineCat(false);
+                      }
+                    }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
                   />
                   <button
@@ -1098,6 +1130,11 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       placeholder="Ex: Mãe, Irmão, Amigo..."
                       value={inlineMemberName}
                       onChange={(e) => setInlineMemberName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                        }
+                      }}
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
                     />
                   </div>
@@ -1110,6 +1147,11 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       step="0.01"
                       value={inlineMemberIncome}
                       onChange={(e) => setInlineMemberIncome(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                        }
+                      }}
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
                     />
                   </div>
@@ -1135,12 +1177,20 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                         ),
                       };
                       onAddMember(newMember);
-                      const nextParticipants = [
-                        ...activeParticipantIds,
-                        newMember.id,
-                      ];
-                      setParticipantIds(nextParticipants);
-                      setSplitCount(Math.max(splitCount, nextParticipants.length));
+                      if (splitType === 'individual') {
+                        setBeneficiaryId(newMember.id);
+                        setUsedById(newMember.id);
+                        setParticipantIds([newMember.id]);
+                      } else {
+                        const nextParticipants = [
+                          ...activeParticipantIds,
+                          newMember.id,
+                        ];
+                        setParticipantIds(nextParticipants);
+                        setSplitCount(
+                          Math.max(splitCount, nextParticipants.length)
+                        );
+                      }
                       setInlineMemberName('');
                       setShowInlineMember(false);
                     }}

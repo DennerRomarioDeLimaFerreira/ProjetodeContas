@@ -444,8 +444,8 @@ export function parseQuickEntry(
     matchedCard = cards[0];
   }
 
-  // Detecta tipo de divisão
-  let splitType: SplitType = 'shared_equal';
+  // Detecta tipo de divisão (padrão: 1 pessoa / individual, salvo se informar compartilhado/proporcional)
+  let splitType: SplitType = 'individual';
   if (/\bproporcional\b/i.test(cleaned)) {
     splitType = 'shared_proportional';
     cleaned = cleaned.replace(/\bproporcional\b/i, ' ');

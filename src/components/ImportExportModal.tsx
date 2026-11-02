@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   CheckSquare,
   Download,
@@ -22,6 +22,7 @@ import {
   ParsedImportRow,
   parseOFXContent,
 } from '../utils/importExportUtils';
+import { detectPII } from '../utils/lgpd';
 
 interface ImportExportModalProps {
   isOpen: boolean;
@@ -51,7 +52,16 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     state.members[0]?.id || ''
   );
   const [importSplitType, setImportSplitType] =
-    useState<SplitType>('shared_equal');
+    useState<SplitType>('individual');
+
+  useEffect(() => {
+    if (!importCardId && state.cards.length > 0) {
+      setImportCardId(state.cards[0].id);
+    }
+    if (!importPaidById && state.members.length > 0) {
+      setImportPaidById(state.members[0].id);
+    }
+  }, [state.cards, state.members, importCardId, importPaidById]);
 
   if (!isOpen) return null;
 
@@ -106,23 +116,34 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
         ? card.holderId
         : importPaidById || state.members[0]?.id || 'm1';
 
-    const generated: Transaction[] = selected.map((row, idx) => ({
-      id: `tx-imp-${Date.now()}-${idx}`,
-      description: row.description,
-      amount: row.amount,
-      date: row.date,
-      competenceMonth: selectedMonth,
-      type: row.type,
-      categoryId: row.categoryId,
-      paymentMethod: importPaymentMethod,
-      cardId:
-        importPaymentMethod === 'credit_card' ? importCardId : undefined,
-      paidById: effectivePayer,
-      splitType: importSplitType,
-      installmentCurrent: row.installmentCurrent,
-      installmentTotal: row.installmentTotal,
-      isPaid: importPaymentMethod !== 'credit_card',
-    }));
+    const isIndiv = importSplitType === 'individual';
+    const allMemberIds = state.members.map((m) => m.id);
+
+    const generated: Transaction[] = selected.map((row, idx) => {
+      const pii = detectPII(row.description);
+      const safeDesc = pii.hasPII ? pii.sanitizedText : row.description;
+      return {
+        id: `tx-imp-${Date.now()}-${idx}`,
+        description: safeDesc,
+        amount: row.amount,
+        date: row.date,
+        competenceMonth: selectedMonth,
+        type: row.type,
+        categoryId: row.categoryId,
+        paymentMethod: importPaymentMethod,
+        cardId:
+          importPaymentMethod === 'credit_card' ? importCardId : undefined,
+        paidById: effectivePayer,
+        usedById: effectivePayer,
+        beneficiaryId: isIndiv ? effectivePayer : undefined,
+        splitType: importSplitType,
+        splitCount: isIndiv ? 1 : Math.max(2, allMemberIds.length),
+        participantIds: isIndiv ? [effectivePayer] : allMemberIds,
+        installmentCurrent: row.installmentCurrent,
+        installmentTotal: row.installmentTotal,
+        isPaid: importPaymentMethod !== 'credit_card',
+      };
+    });
 
     onImportTransactions(generated);
     setParsedRows([]);

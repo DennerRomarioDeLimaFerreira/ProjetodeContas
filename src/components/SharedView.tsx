@@ -524,14 +524,20 @@ export const SharedView: React.FC<SharedViewProps> = ({
                         value={effectiveUsedBy}
                         onChange={(e) => {
                           const selectedUserId = e.target.value;
+                          const becomesIndividual = selectedUserId !== tx.paidById;
                           onUpdateTransaction({
                             ...tx,
                             usedById: selectedUserId,
                             beneficiaryId: selectedUserId,
-                            splitType:
-                              selectedUserId !== tx.paidById
-                                ? 'individual'
-                                : tx.splitType,
+                            splitType: becomesIndividual
+                              ? 'individual'
+                              : tx.splitType,
+                            splitCount: becomesIndividual
+                              ? 1
+                              : tx.splitCount || 1,
+                            participantIds: becomesIndividual
+                              ? [selectedUserId]
+                              : tx.participantIds,
                           });
                         }}
                         className="bg-slate-950 border border-violet-500/40 rounded-lg px-2 py-1 text-xs text-violet-200 font-medium focus:outline-none focus:border-violet-400"
@@ -610,7 +616,13 @@ export const SharedView: React.FC<SharedViewProps> = ({
                               onUpdateTransaction({
                                 ...tx,
                                 splitType: val as Transaction['splitType'],
-                                splitCount: Math.max(2, tx.splitCount || members.length),
+                                splitCount: Math.max(
+                                  2,
+                                  tx.splitCount && tx.splitCount > 1
+                                    ? tx.splitCount
+                                    : members.length
+                                ),
+                                participantIds: members.map((m) => m.id),
                                 beneficiaryId: undefined,
                               });
                             }

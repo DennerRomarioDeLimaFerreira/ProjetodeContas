@@ -455,8 +455,9 @@ export const CardsView: React.FC<CardsViewProps> = ({
                           <span className="text-emerald-400 font-medium">
                             {tx.splitType === 'individual'
                               ? `De: ${
-                                  memberMap[tx.beneficiaryId || tx.paidById]
-                                    ?.name || 'Membro'
+                                  memberMap[
+                                    tx.usedById || tx.beneficiaryId || tx.paidById
+                                  ]?.name || 'Membro'
                                 }`
                               : SPLIT_TYPE_LABELS[tx.splitType]}
                           </span>
@@ -557,9 +558,9 @@ export const CardsView: React.FC<CardsViewProps> = ({
                               <Users className="w-3 h-3 text-emerald-400" />
                               {tx.splitType === 'individual'
                                 ? `Individual (${
-                                    memberMap[tx.beneficiaryId || tx.paidById]?.name.split(
-                                      ' '
-                                    )[0]
+                                    memberMap[
+                                      tx.usedById || tx.beneficiaryId || tx.paidById
+                                    ]?.name.split(' ')[0] || 'Membro'
                                   })`
                                 : 'Compartilhado'}
                             </span>

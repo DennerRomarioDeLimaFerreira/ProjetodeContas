@@ -19,6 +19,7 @@ import {
   Transaction,
 } from '../types/finance';
 import {
+  calculateTransactionShares,
   formatCurrency,
   formatMonthLabel,
   PAYMENT_METHOD_LABELS,
@@ -102,12 +103,16 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         }
       }
       if (filterMember !== 'all') {
-        const ownerId = tx.beneficiaryId || tx.paidById;
-        if (tx.type === 'expense' && tx.splitType !== 'individual') {
-          return false;
-        }
-        if (ownerId !== filterMember) {
-          return false;
+        const ownerId = tx.usedById || tx.beneficiaryId || tx.paidById;
+        if (tx.type === 'income' || tx.splitType === 'individual') {
+          if (ownerId !== filterMember) {
+            return false;
+          }
+        } else {
+          const shares = calculateTransactionShares(tx, members);
+          if ((shares[filterMember] || 0) <= 0) {
+            return false;
+          }
         }
       }
       if (filterSplit !== 'all') {

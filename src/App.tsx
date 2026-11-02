@@ -82,6 +82,7 @@ export function App() {
   // Modais
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [preselectedCardId, setPreselectedCardId] = useState<string | null>(null);
   const [isImportExportOpen, setIsImportExportOpen] = useState(false);
   const [isLgpdModalOpen, setIsLgpdModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -184,15 +185,12 @@ export function App() {
     if (!quickPreview) return;
 
     const today = getTodayISO();
-    const date = today.startsWith(selectedMonth)
-      ? today
-      : `${selectedMonth}-10`;
+    const date = today;
     const card = state.cards.find((c) => c.id === quickPreview.cardId);
-    const firstComp = computeFirstCompetenceMonth(
-      date,
-      quickPreview.paymentMethod,
-      card
-    );
+    const firstComp =
+      quickPreview.installments > 1
+        ? computeFirstCompetenceMonth(date, quickPreview.paymentMethod, card)
+        : selectedMonth;
 
     const groupId = `grp-quick-${Date.now()}`;
     const newTxs: Transaction[] = [];
@@ -202,6 +200,9 @@ export function App() {
     const safeQuickDesc = piiScan.hasPII
       ? piiScan.sanitizedText
       : quickPreview.description;
+
+    const isIndiv = quickPreview.splitType === 'individual';
+    const allMemberIds = state.members.map((m) => m.id);
 
     for (let i = 1; i <= quickPreview.installments; i++) {
       newTxs.push({
@@ -218,7 +219,11 @@ export function App() {
         paymentMethod: quickPreview.paymentMethod,
         cardId: quickPreview.cardId,
         paidById: quickPreview.paidById,
+        usedById: quickPreview.paidById,
+        beneficiaryId: isIndiv ? quickPreview.paidById : undefined,
         splitType: quickPreview.splitType,
+        splitCount: isIndiv ? 1 : Math.max(2, allMemberIds.length),
+        participantIds: isIndiv ? [quickPreview.paidById] : allMemberIds,
         installmentCurrent: quickPreview.installments > 1 ? i : undefined,
         installmentTotal:
           quickPreview.installments > 1
@@ -379,10 +384,47 @@ export function App() {
     ) {
       return;
     }
-    setState((prev) => ({
-      ...prev,
-      members: prev.members.filter((m) => m.id !== memberId),
-    }));
+    setState((prev) => {
+      const remainingMembers = prev.members.filter((m) => m.id !== memberId);
+      const fallbackMemberId = remainingMembers[0]?.id || 'm1';
+
+      const updatedCards = prev.cards.map((c) =>
+        c.holderId === memberId ? { ...c, holderId: fallbackMemberId } : c
+      );
+
+      const updatedTxs = prev.transactions.map((t) => {
+        const nextPaidBy =
+          t.paidById === memberId ? fallbackMemberId : t.paidById;
+        const nextUsedBy =
+          t.usedById === memberId ? fallbackMemberId : t.usedById;
+        const nextBeneficiary =
+          t.beneficiaryId === memberId ? fallbackMemberId : t.beneficiaryId;
+        const nextParticipants = t.participantIds
+          ? t.participantIds
+              .map((id) => (id === memberId ? fallbackMemberId : id))
+              .filter((id, idx, arr) => arr.indexOf(id) === idx)
+          : undefined;
+        return {
+          ...t,
+          paidById: nextPaidBy,
+          usedById: nextUsedBy,
+          beneficiaryId: nextBeneficiary,
+          participantIds: nextParticipants,
+        };
+      });
+
+      const updatedSettlements = prev.settlements.filter(
+        (s) => s.fromMemberId !== memberId && s.toMemberId !== memberId
+      );
+
+      return {
+        ...prev,
+        members: remainingMembers,
+        cards: updatedCards,
+        transactions: updatedTxs,
+        settlements: updatedSettlements,
+      };
+    });
   };
 
   const handleAddSettlement = (record: SettlementRecord) => {
@@ -424,10 +466,23 @@ export function App() {
     ) {
       return;
     }
-    setState((prev) => ({
-      ...prev,
-      categories: prev.categories.filter((c) => c.id !== categoryId),
-    }));
+    setState((prev) => {
+      const remainingCategories = prev.categories.filter(
+        (c) => c.id !== categoryId
+      );
+      const fallbackCat =
+        remainingCategories.find((c) => c.type === cat?.type) ||
+        remainingCategories[0];
+      const fallbackCatId = fallbackCat?.id || 'cat-outros';
+
+      return {
+        ...prev,
+        categories: remainingCategories,
+        transactions: prev.transactions.map((t) =>
+          t.categoryId === categoryId ? { ...t, categoryId: fallbackCatId } : t
+        ),
+      };
+    });
   };
 
   const handleResetDemo = () => {
@@ -560,6 +615,7 @@ export function App() {
             <button
               onClick={() => {
                 setEditingTx(null);
+                setPreselectedCardId(null);
                 setIsTxModalOpen(true);
               }}
               className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold shadow-lg shadow-emerald-500/20 transition"
@@ -652,7 +708,7 @@ export function App() {
               className="mt-2"
             />
             {quickFeedback && (
-              <div className="absolute right-0 -bottom-6 text-[11px] text-emerald-400 font-medium">
+              <div className="mt-1.5 text-right text-[11px] text-emerald-400 font-medium">
                 ✓ {quickFeedback}
               </div>
             )}
@@ -688,8 +744,9 @@ export function App() {
             onUpdateCard={handleUpdateCard}
             onDeleteCard={handleDeleteCard}
             onPayCardInvoice={handlePayCardInvoice}
-            onOpenNewTransactionWithCard={() => {
+            onOpenNewTransactionWithCard={(cardId) => {
               setEditingTx(null);
+              setPreselectedCardId(cardId);
               setIsTxModalOpen(true);
             }}
           />
@@ -717,6 +774,7 @@ export function App() {
             }}
             onEditTransaction={(tx) => {
               setEditingTx(tx);
+              setPreselectedCardId(null);
               setIsTxModalOpen(true);
             }}
             onDeleteTransaction={handleDeleteTransaction}
@@ -732,12 +790,14 @@ export function App() {
             members={state.members}
             onEditTransaction={(tx) => {
               setEditingTx(tx);
+              setPreselectedCardId(null);
               setIsTxModalOpen(true);
             }}
             onDeleteTransaction={handleDeleteTransaction}
             onTogglePaid={handleTogglePaid}
             onOpenNewModal={() => {
               setEditingTx(null);
+              setPreselectedCardId(null);
               setIsTxModalOpen(true);
             }}
           />
@@ -762,6 +822,7 @@ export function App() {
         onClose={() => {
           setIsTxModalOpen(false);
           setEditingTx(null);
+          setPreselectedCardId(null);
         }}
         onSaveTransactions={handleSaveTransactions}
         onAddCategory={handleAddCategory}
@@ -771,6 +832,7 @@ export function App() {
         members={state.members}
         selectedMonth={selectedMonth}
         editingTransaction={editingTx}
+        preselectedCardId={preselectedCardId}
       />
 
       <ImportExportModal
