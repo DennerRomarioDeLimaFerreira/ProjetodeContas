@@ -230,7 +230,7 @@ export function App() {
 
     setState((prev) => ({
       ...prev,
-      transactions: [...newTxs, ...prev.transactions],
+      transactions: [...prev.transactions, ...newTxs],
     }));
 
     setQuickText('');
@@ -257,7 +257,7 @@ export function App() {
         );
         return {
           ...prev,
-          transactions: [...savedTxs, ...remaining],
+          transactions: [...remaining, ...savedTxs],
         };
       }
 
@@ -275,7 +275,7 @@ export function App() {
         );
         return {
           ...prev,
-          transactions: [...savedTxs, ...remaining],
+          transactions: [...remaining, ...savedTxs],
         };
       }
 
@@ -290,7 +290,7 @@ export function App() {
 
       return {
         ...prev,
-        transactions: [...savedTxs, ...prev.transactions],
+        transactions: [...prev.transactions, ...savedTxs],
       };
     });
     setEditingTx(null);

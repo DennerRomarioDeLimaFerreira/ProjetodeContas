@@ -53,10 +53,34 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const [filterMethod, setFilterMethod] = useState('all');
   const [filterMember, setFilterMember] = useState('all');
   const [filterSplit, setFilterSplit] = useState('all');
+  const [sortOrder, setSortOrder] = useState<
+    'inclusion_asc' | 'inclusion_desc' | 'date_desc' | 'date_asc'
+  >('inclusion_asc');
 
   const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c]));
   const cardMap = Object.fromEntries(cards.map((c) => [c.id, c]));
   const memberMap = Object.fromEntries(members.map((m) => [m.id, m]));
+
+  const indexMap = new Map<string, number>();
+  transactions.forEach((t, idx) => {
+    indexMap.set(t.id, idx);
+  });
+
+  const getInclusionOrderKey = (tx: Transaction): number => {
+    const santanderMatch = /^tx-santander-2026-(\d+)/.exec(tx.id);
+    if (santanderMatch) {
+      return 1000 + parseInt(santanderMatch[1], 10);
+    }
+    const tsMatch = /^tx-(?:q-)?(\d{10,})/.exec(tx.id);
+    if (tsMatch) {
+      return parseInt(tsMatch[1], 10);
+    }
+    const grpMatch = /^grp-(?:quick-)?(\d{10,})/.exec(tx.groupId || '');
+    if (grpMatch) {
+      return parseInt(grpMatch[1], 10);
+    }
+    return 2000 + (indexMap.get(tx.id) ?? 0);
+  };
 
   const filtered = transactions
     .filter((tx) => {
@@ -102,7 +126,24 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
       }
       return true;
     })
-    .sort((a, b) => b.date.localeCompare(a.date));
+    .sort((a, b) => {
+      if (sortOrder === 'inclusion_asc') {
+        return getInclusionOrderKey(a) - getInclusionOrderKey(b);
+      }
+      if (sortOrder === 'inclusion_desc') {
+        return getInclusionOrderKey(b) - getInclusionOrderKey(a);
+      }
+      if (sortOrder === 'date_asc') {
+        return (
+          a.date.localeCompare(b.date) ||
+          getInclusionOrderKey(a) - getInclusionOrderKey(b)
+        );
+      }
+      return (
+        b.date.localeCompare(a.date) ||
+        getInclusionOrderKey(b) - getInclusionOrderKey(a)
+      );
+    });
 
   const totalFilteredExpenses = filtered
     .filter((t) => t.type === 'expense')
@@ -212,12 +253,45 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           </select>
         </div>
 
-        {/* Rodapé de totais filtrados */}
+        {/* Rodapé de totais filtrados e Ordenação */}
         <div className="flex flex-wrap items-center justify-between pt-2 border-t border-slate-800/80 text-xs text-slate-400 gap-2">
-          <span className="flex items-center gap-1.5">
-            <Filter className="w-3.5 h-3.5 text-emerald-400" />
-            Exibindo <strong>{filtered.length}</strong> lançamentos
-          </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex items-center gap-1.5">
+              <Filter className="w-3.5 h-3.5 text-emerald-400" />
+              Exibindo <strong>{filtered.length}</strong> lançamentos
+            </span>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500">Ordenar:</span>
+              <select
+                value={sortOrder}
+                onChange={(e) =>
+                  setSortOrder(
+                    e.target.value as
+                      | 'inclusion_asc'
+                      | 'inclusion_desc'
+                      | 'date_desc'
+                      | 'date_asc'
+                  )
+                }
+                className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-emerald-300 font-medium focus:outline-none focus:border-emerald-500"
+              >
+                <option value="inclusion_asc">
+                  Ordem de Inclusão (1º ao Último)
+                </option>
+                <option value="inclusion_desc">
+                  Ordem de Inclusão (Últimos no Topo)
+                </option>
+                <option value="date_desc">
+                  Data da Compra (Mais Recente)
+                </option>
+                <option value="date_asc">
+                  Data da Compra (Mais Antiga)
+                </option>
+              </select>
+            </div>
+          </div>
+
           <div className="flex items-center gap-4">
             {totalFilteredIncomes > 0 && (
               <span>
