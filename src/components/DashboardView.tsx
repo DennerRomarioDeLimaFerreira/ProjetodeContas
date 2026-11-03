@@ -173,20 +173,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     1000
   );
 
-  // Construção do Donut SVG
-  let cumulativePercent = 0;
+  // Construção pura do Donut SVG
   const donutSegments = categoryBreakdown
     .filter((c) => c.spent > 0)
-    .map((item) => {
-      const startPct = cumulativePercent;
-      cumulativePercent += item.pctOfTotal;
-      return {
+    .reduce<
+      Array<
+        (typeof categoryBreakdown)[number] & {
+          startPct: number;
+          dashArray: string;
+          dashOffset: number;
+        }
+      >
+    >((acc, item) => {
+      const prev = acc[acc.length - 1];
+      const startPct = prev ? prev.startPct + prev.pctOfTotal : 0;
+      acc.push({
         ...item,
         startPct,
         dashArray: `${item.pctOfTotal} ${100 - item.pctOfTotal}`,
         dashOffset: 100 - startPct + 25,
-      };
-    });
+      });
+      return acc;
+    }, []);
 
   return (
     <div className="space-y-6">

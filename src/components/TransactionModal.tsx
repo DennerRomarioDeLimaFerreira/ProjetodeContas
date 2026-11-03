@@ -39,6 +39,20 @@ export interface SaveTransactionsMeta {
   replaceGroupId?: string;
 }
 
+function generateTxId(prefix = 'tx', index?: number): string {
+  const ts = Date.now();
+  const rnd = Math.floor(Math.random() * 1000);
+  return index !== undefined ? `${prefix}-${ts}-${index}` : `${prefix}-${ts}-${rnd}`;
+}
+
+function generateGroupId(): string {
+  return `grp-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+}
+
+function generateCategoryId(): string {
+  return `cat-${Date.now()}`;
+}
+
 interface TransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -371,7 +385,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     let resolvedCategoryId = categoryId || filteredCategories[0]?.id || '';
     if (showInlineCat && inlineCatName.trim() && onAddCategory) {
       const created: Category = {
-        id: `cat-${Date.now()}`,
+        id: generateCategoryId(),
         name: inlineCatName.trim(),
         icon: 'Tag',
         color: inlineCatColor,
@@ -442,7 +456,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       return;
     }
 
-    const baseGroupId = editingTransaction?.groupId || `grp-${Date.now()}`;
+    const baseGroupId = editingTransaction?.groupId || generateGroupId();
     const generated: Transaction[] = [];
 
     if (effectiveInstallments > 1) {
@@ -452,7 +466,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           id:
             editingTransaction && i === (editingTransaction.installmentCurrent || 1)
               ? editingTransaction.id
-              : `tx-${Date.now()}-${i}`,
+              : generateTxId('tx', i),
           groupId: baseGroupId,
           description: cleanDescription,
           amount: perInstallmentAmount,
@@ -487,7 +501,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           id:
             editingTransaction && i === 0
               ? editingTransaction.id
-              : `tx-${Date.now()}-rec-${i}`,
+              : generateTxId('tx-rec', i),
           groupId: baseGroupId,
           description: cleanDescription,
           amount: perInstallmentAmount,
@@ -511,7 +525,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       }
     } else {
       generated.push({
-        id: editingTransaction ? editingTransaction.id : `tx-${Date.now()}`,
+        id: editingTransaction ? editingTransaction.id : generateTxId('tx'),
         description: cleanDescription,
         amount: perInstallmentAmount,
         date,

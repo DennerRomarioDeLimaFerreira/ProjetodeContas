@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   CheckSquare,
   Download,
@@ -54,14 +54,8 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   const [importSplitType, setImportSplitType] =
     useState<SplitType>('individual');
 
-  useEffect(() => {
-    if (!importCardId && state.cards.length > 0) {
-      setImportCardId(state.cards[0].id);
-    }
-    if (!importPaidById && state.members.length > 0) {
-      setImportPaidById(state.members[0].id);
-    }
-  }, [state.cards, state.members, importCardId, importPaidById]);
+  const effectiveCardId = importCardId || state.cards[0]?.id || '';
+  const effectivePaidById = importPaidById || state.members[0]?.id || '';
 
   if (!isOpen) return null;
 
@@ -110,11 +104,11 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     const selected = parsedRows.filter((r) => r.selected);
     if (selected.length === 0) return;
 
-    const card = state.cards.find((c) => c.id === importCardId);
+    const card = state.cards.find((c) => c.id === effectiveCardId);
     const effectivePayer =
       importPaymentMethod === 'credit_card' && card
         ? card.holderId
-        : importPaidById || state.members[0]?.id || 'm1';
+        : effectivePaidById;
 
     const isIndiv = importSplitType === 'individual';
     const allMemberIds = state.members.map((m) => m.id);
@@ -132,7 +126,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
         categoryId: row.categoryId,
         paymentMethod: importPaymentMethod,
         cardId:
-          importPaymentMethod === 'credit_card' ? importCardId : undefined,
+          importPaymentMethod === 'credit_card' ? effectiveCardId : undefined,
         paidById: effectivePayer,
         usedById: effectivePayer,
         beneficiaryId: isIndiv ? effectivePayer : undefined,
@@ -246,7 +240,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                         Cartão de Destino:
                       </label>
                       <select
-                        value={importCardId}
+                        value={effectiveCardId}
                         onChange={(e) => setImportCardId(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
                       >
@@ -263,7 +257,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                         Pago por:
                       </label>
                       <select
-                        value={importPaidById}
+                        value={effectivePaidById}
                         onChange={(e) => setImportPaidById(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
                       >
