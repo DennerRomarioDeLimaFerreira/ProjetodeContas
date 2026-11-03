@@ -81,7 +81,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const settlementData = calculateMonthlySettlement(
     monthExpenses,
     members,
-    monthSettlements
+    monthSettlements,
+    cards
   );
 
   const balance = effectiveIncome - totalExpenses;
@@ -482,12 +483,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       {sum.member.name}
                     </div>
                     <div className="text-[11px] text-slate-400">
-                      Pagou: {formatCurrency(sum.paidOutOfPocket)}
+                      Cartões: {formatCurrency(sum.cardsResponsibility)}
                     </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-[11px] text-slate-400">Parte Justa</div>
+                  <div className="text-[11px] text-slate-400">Total do Mês</div>
                   <div className="text-xs font-bold text-slate-200">
                     {formatCurrency(sum.fairShareResponsibility)}
                   </div>

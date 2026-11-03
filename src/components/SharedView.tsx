@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   ArrowRight,
   CheckCircle2,
+  CreditCard as CreditCardIcon,
   Edit2,
   Edit3,
   Scale,
@@ -31,6 +32,7 @@ interface SharedViewProps {
   cards: CreditCard[];
   monthTransactions: Transaction[];
   settlements: SettlementRecord[];
+  onPayCardInvoice?: (cardId: string, month: string) => void;
   onUpdateMember: (member: Member) => void;
   onAddMember: (member: Member) => void;
   onDeleteMember: (memberId: string) => void;
@@ -47,6 +49,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
   cards,
   monthTransactions,
   settlements,
+  onPayCardInvoice,
   onUpdateMember,
   onAddMember,
   onDeleteMember,
@@ -82,9 +85,13 @@ export const SharedView: React.FC<SharedViewProps> = ({
   const {
     summaries,
     transfers,
+    cardBreakdowns,
     totalSharedExpenses,
     totalIndividualExpenses,
-  } = calculateMonthlySettlement(monthTransactions, members, settlementPairs);
+    totalCardsInvoice,
+    // totalDirectExpenses unused or used
+    totalDirectExpenses,
+  } = calculateMonthlySettlement(monthTransactions, members, settlementPairs, cards);
 
   const cardMap = Object.fromEntries(cards.map((c) => [c.id, c]));
   const memberMap = Object.fromEntries(members.map((m) => [m.id, m]));
@@ -122,7 +129,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Cabeçalho */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -130,15 +137,14 @@ export const SharedView: React.FC<SharedViewProps> = ({
             <Users className="w-5 h-5 text-emerald-400" />
             Finanças Compartilhadas & Acerto de Contas
           </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Divisão inteligente de contas da casa, faturas de cartão e cálculo automático de quem deve para quem em{' '}
-            <strong className="text-slate-200">{formatMonthLabel(selectedMonth)}</strong>
+          <p className="text-xs text-slate-400 mt-1">
+            <strong className="text-emerald-400">Novo conceito de divisão:</strong> O valor das compras vai para a <span className="text-slate-200 font-semibold">fatura do respectivo cartão</span>, evitando abatimentos irreais de outros participantes em {formatMonthLabel(selectedMonth)}.
           </p>
         </div>
 
         <button
           onClick={() => setShowAddMember(!showAddMember)}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold transition"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold transition self-start sm:self-auto"
         >
           <UserPlus className="w-4 h-4 text-emerald-400" />
           Adicionar Participante
@@ -184,249 +190,450 @@ export const SharedView: React.FC<SharedViewProps> = ({
         </form>
       )}
 
-      {/* Cards de Membros + Proporção de Renda */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {summaries.map((sum) => {
-          const incomeWeight =
-            totalHouseholdIncome > 0
-              ? ((sum.member.monthlyIncome / totalHouseholdIncome) * 100).toFixed(2)
-              : (100 / members.length).toFixed(2);
+      {/* SEÇÃO 1: Faturas de Cartão de Crédito - O valor vai para o cartão */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-violet-500/20 text-violet-400">
+              <CreditCardIcon className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                Faturas de Cartão de Crédito do Mês
+                <span className="text-[10px] bg-violet-500/20 text-violet-300 font-semibold px-2 py-0.5 rounded-full">
+                  Destino: Cartão
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                O valor a pagar vai direto para a fatura do cartão — sem abater créditos/débitos de outros participantes.
+              </p>
+            </div>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-xl text-right">
+            <span className="text-[11px] text-slate-400 block">Total em Faturas</span>
+            <span className="text-sm font-bold text-violet-300">
+              {formatCurrency(totalCardsInvoice)}
+            </span>
+          </div>
+        </div>
 
-          const isEditing = editingMemberId === sum.member.id;
-
-          return (
-            <div
-              key={sum.member.id}
-              className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-4"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
+        {cardBreakdowns.length === 0 || cardBreakdowns.every((cb) => cb.invoiceTotal === 0) ? (
+          <div className="bg-slate-900/60 border border-dashed border-slate-800 rounded-2xl p-6 text-center space-y-1">
+            <CreditCardIcon className="w-6 h-6 text-slate-500 mx-auto" />
+            <div className="text-xs font-semibold text-slate-300">
+              Nenhuma despesa de cartão de crédito em {formatMonthLabel(selectedMonth)}
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Quando você lançar compras no cartão, as cotas de cada participante para a fatura aparecerão discriminadas aqui.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {cardBreakdowns
+              .filter((cb) => cb.invoiceTotal > 0)
+              .map((cb) => {
+                const holderName = cb.holder ? cb.holder.name.split(' ')[0] : 'Titular';
+                return (
                   <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-slate-950"
-                    style={{ backgroundColor: sum.member.avatarColor }}
+                    key={cb.card.id}
+                    className="bg-slate-900/90 border border-slate-800 hover:border-slate-700 rounded-2xl p-5 relative overflow-hidden flex flex-col justify-between transition space-y-4"
                   >
-                    {sum.member.name.slice(0, 2).toUpperCase()}
+                    <div
+                      className="absolute top-0 left-0 right-0 h-1.5"
+                      style={{ backgroundColor: cb.card.color }}
+                    />
+
+                    <div className="space-y-3.5">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-3 h-3 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: cb.card.color }}
+                            />
+                            <h4 className="font-bold text-white text-base">
+                              {cb.card.name}
+                            </h4>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            Final {cb.card.lastDigits || '****'} • Titular:{' '}
+                            <span className="text-slate-200 font-medium">{holderName}</span>
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold block ${
+                              cb.isPaid
+                                ? 'bg-emerald-500/20 text-emerald-300'
+                                : 'bg-amber-500/20 text-amber-300'
+                            }`}
+                          >
+                            {cb.isPaid ? 'Fatura Paga' : 'Aberta'}
+                          </span>
+                          <span className="text-[10px] text-slate-500 mt-0.5 block">
+                            Vence dia {cb.card.dueDay}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Total da Fatura */}
+                      <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3.5 flex items-center justify-between">
+                        <span className="text-xs text-slate-400 font-medium">
+                          Valor Total da Fatura
+                        </span>
+                        <span className="text-xl font-extrabold text-white">
+                          {formatCurrency(cb.invoiceTotal)}
+                        </span>
+                      </div>
+
+                      {/* Lista de Cotas por Participante */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px] font-medium text-slate-400">
+                          <span className="flex items-center gap-1.5 text-slate-300">
+                            <Users className="w-3.5 h-3.5 text-emerald-400" />
+                            Divisão exata da fatura:
+                          </span>
+                          <span className="text-[10px] text-slate-500">
+                            {cb.transactionsCount} lançamentos
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          {cb.memberShares.map((ms) => {
+                            if (ms.totalShare <= 0) return null;
+                            return (
+                              <div
+                                key={ms.memberId}
+                                className="bg-slate-950/70 border border-slate-800/60 rounded-xl p-2.5 space-y-1.5"
+                              >
+                                <div className="flex items-center justify-between text-xs">
+                                  <div className="flex items-center gap-2">
+                                    <div
+                                      className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-950 flex-shrink-0"
+                                      style={{ backgroundColor: ms.avatarColor }}
+                                    >
+                                      {ms.memberName.slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <span className="font-semibold text-white">
+                                      {ms.memberName}
+                                      {ms.isHolder && (
+                                        <span className="ml-1 text-[9px] bg-slate-800 text-slate-400 px-1 py-0.5 rounded font-normal">
+                                          Titular
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="font-bold text-emerald-300">
+                                      {formatCurrency(ms.totalShare)}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 ml-1.5">
+                                      ({ms.percentage.toFixed(1)}%)
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800/40">
+                                  <span>Origem do gasto:</span>
+                                  <span>
+                                    {ms.individualTotal > 0 && ms.sharedTotal > 0
+                                      ? `${formatCurrency(ms.individualTotal)} individual + ${formatCurrency(ms.sharedTotal)} compartilhado`
+                                      : ms.individualTotal > 0
+                                      ? '100% individual dele(a)'
+                                      : 'Parcela de gastos compartilhados'}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <div className="text-[10px] text-slate-500 bg-slate-950/40 p-2 rounded-lg border border-slate-800/40 mb-2">
+                        💳 <strong>Atenção:</strong> Cada participante transfere sua cota diretamente para pagar a fatura do {cb.card.name}.
+                      </div>
+
+                      {onPayCardInvoice && !cb.isPaid && (
+                        <button
+                          type="button"
+                          onClick={() => onPayCardInvoice(cb.card.id, selectedMonth)}
+                          className="w-full py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Quitar esta fatura
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div>
+                );
+              })}
+          </div>
+        )}
+      </div>
+
+      {/* SEÇÃO 2: Resumo Geral por Participante + Acertos Diretos */}
+      <div className="space-y-4">
+        <div className="border-b border-slate-800/80 pb-3">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <Scale className="w-5 h-5 text-emerald-400" />
+            Visão Geral por Participante & Acertos Diretos
+          </h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Consolidação de quanto cada membro é responsável no mês: faturas de cartão e despesas diretas fora do cartão (Pix / Dinheiro).
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {summaries.map((sum) => {
+            const incomeWeight =
+              totalHouseholdIncome > 0
+                ? ((sum.member.monthlyIncome / totalHouseholdIncome) * 100).toFixed(2)
+                : (100 / members.length).toFixed(2);
+
+            const isEditing = editingMemberId === sum.member.id;
+
+            return (
+              <div
+                key={sum.member.id}
+                className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-4 flex flex-col justify-between"
+              >
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-slate-950"
+                        style={{ backgroundColor: sum.member.avatarColor }}
+                      >
+                        {sum.member.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white"
+                          />
+                        ) : (
+                          <h3 className="font-bold text-white text-sm">
+                            {sum.member.name}
+                          </h3>
+                        )}
+                        <p className="text-[11px] text-slate-400">
+                          Peso Proporcional na Casa:{' '}
+                          <strong className="text-emerald-400">{incomeWeight}%</strong>
+                        </p>
+                      </div>
+                    </div>
+
                     {isEditing ? (
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white"
-                      />
+                      <button
+                        onClick={() => saveMemberEdit(sum.member)}
+                        className="text-xs bg-emerald-500 text-slate-950 font-semibold px-2.5 py-1 rounded-lg"
+                      >
+                        Salvar
+                      </button>
                     ) : (
-                      <h3 className="font-bold text-white text-sm">
-                        {sum.member.name}
-                      </h3>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => startEditingMember(sum.member)}
+                          className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
+                          title="Alterar nome e renda"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        {members.length > 1 && (
+                          <button
+                            onClick={() => onDeleteMember(sum.member.id)}
+                            className="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition"
+                            title="Excluir participante"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     )}
-                    <p className="text-[11px] text-slate-400">
-                      Peso Proporcional na Casa:{' '}
-                      <strong className="text-emerald-400">{incomeWeight}%</strong>
-                    </p>
+                  </div>
+
+                  {isEditing && (
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        Renda Mensal Base (R$)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editIncome}
+                        onChange={(e) => setEditIncome(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
+                      />
+                    </div>
+                  )}
+
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3.5 space-y-2 text-xs">
+                    <div className="flex justify-between text-slate-400">
+                      <span>Renda cadastrada:</span>
+                      <span className="text-slate-200 font-medium">
+                        {formatCurrency(sum.member.monthlyIncome)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-slate-400 pt-1 border-t border-slate-800">
+                      <span className="flex items-center gap-1">
+                        <CreditCardIcon className="w-3.5 h-3.5 text-violet-400" />
+                        Cota em Faturas de Cartão:
+                      </span>
+                      <span className="text-violet-300 font-bold">
+                        {formatCurrency(sum.cardsResponsibility)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-slate-400">
+                      <span>Cota em Contas Diretas (Pix/À vista):</span>
+                      <span className="text-slate-200 font-medium">
+                        {formatCurrency(sum.directResponsibility)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between font-semibold pt-1.5 border-t border-slate-800">
+                      <span className="text-slate-200">Custo Total no Mês:</span>
+                      <span className="text-white font-bold text-sm">
+                        {formatCurrency(sum.fairShareResponsibility)}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                {isEditing ? (
-                  <button
-                    onClick={() => saveMemberEdit(sum.member)}
-                    className="text-xs bg-emerald-500 text-slate-950 font-semibold px-2.5 py-1 rounded-lg"
-                  >
-                    Salvar
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => startEditingMember(sum.member)}
-                      className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
-                      title="Alterar nome e renda"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    {members.length > 1 && (
-                      <button
-                        onClick={() => onDeleteMember(sum.member.id)}
-                        className="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition"
-                        title="Excluir participante"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                )}
+                {/* Status de Acerto Direto (apenas para despesas fora do cartão!) */}
+                <div
+                  className={`rounded-xl px-3.5 py-2.5 flex items-center justify-between text-xs font-semibold ${
+                    sum.directNetBalance > 0.01
+                      ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                      : sum.directNetBalance < -0.01
+                      ? 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
+                      : 'bg-slate-800/60 text-slate-300'
+                  }`}
+                >
+                  <span className="text-[11px]">
+                    {sum.directNetBalance > 0.01
+                      ? 'Pix Direto a Receber:'
+                      : sum.directNetBalance < -0.01
+                      ? 'Pix Direto a Pagar:'
+                      : 'Contas Diretas Quitadas'}
+                  </span>
+                  <span className="text-sm font-bold">
+                    {sum.directNetBalance !== 0
+                      ? formatCurrency(Math.abs(sum.directNetBalance))
+                      : 'R$ 0,00'}
+                  </span>
+                </div>
               </div>
+            );
+          })}
 
-              {isEditing && (
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">
-                    Renda Mensal Base (R$)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editIncome}
-                    onChange={(e) => setEditIncome(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
-                  />
+          {/* Card de Acertos Diretos (Pix / Dinheiro fora do cartão) */}
+          <div className="bg-gradient-to-br from-emerald-950/70 via-slate-900 to-slate-900 border border-emerald-500/40 rounded-2xl p-5 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-emerald-300 text-xs font-semibold uppercase tracking-wider mb-2">
+                <Scale className="w-4 h-4" />
+                Acertos Diretos (Fora do Cartão)
+              </div>
+              <div className="text-[11px] text-slate-400 font-medium mb-1">Total fora de cartão: <strong className="text-slate-200">{formatCurrency(totalDirectExpenses)}</strong></div>
+              <h3 className="text-base font-bold text-white mb-1">
+                Contas da Casa Pagas no Pix / À Vista
+              </h3>
+              <p className="text-xs text-slate-300/80 mb-4">
+                Apenas despesas que foram pagas diretamente do bolso (sem passar em cartão). Não abate valores das faturas de cartão.
+              </p>
+
+              {transfers.length === 0 ? (
+                <div className="bg-emerald-500/15 border border-emerald-500/30 rounded-xl p-4 text-center space-y-1">
+                  <CheckCircle2 className="w-7 h-7 text-emerald-400 mx-auto" />
+                  <div className="text-sm font-bold text-emerald-200">
+                    Nenhum Pix Direto Pendente
+                  </div>
+                  <p className="text-xs text-emerald-300/80">
+                    Todas as contas fora do cartão estão quitadas ou individuais neste mês.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {transfers.map((tr, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-slate-950/90 border border-emerald-500/30 rounded-xl p-4 space-y-3"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-amber-300">
+                          {tr.fromMember.name}
+                        </span>
+                        <ArrowRight className="w-4 h-4 text-slate-400" />
+                        <span className="font-bold text-emerald-300">
+                          {tr.toMember.name}
+                        </span>
+                      </div>
+                      <div className="text-center py-1">
+                        <div className="text-[11px] text-slate-400">
+                          Valor para transferência Pix direta:
+                        </div>
+                        <div className="text-2xl font-extrabold text-white">
+                          {formatCurrency(tr.amount)}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() =>
+                          onAddSettlement({
+                            id: `settle-${Date.now()}`,
+                            competenceMonth: selectedMonth,
+                            fromMemberId: tr.fromMember.id,
+                            toMemberId: tr.toMember.id,
+                            amount: tr.amount,
+                            settledAt: new Date().toISOString().slice(0, 10),
+                            note: 'Acerto de contas diretas',
+                          })
+                        }
+                        className="w-full py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        Confirmar Pix Direto
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
-
-              <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 space-y-2 text-xs">
-                <div className="flex justify-between text-slate-400">
-                  <span>Renda cadastrada:</span>
-                  <span className="text-slate-200 font-medium">
-                    {formatCurrency(sum.member.monthlyIncome)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-slate-400">
-                  <span>Dono do Cartão / Pagou Fatura:</span>
-                  <span className="text-white font-semibold">
-                    {formatCurrency(sum.paidOutOfPocket)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-slate-400 pt-1 border-t border-slate-800">
-                  <span>Parte nos Gastos Compartilhados:</span>
-                  <span className="text-emerald-300">
-                    {formatCurrency(sum.sharedResponsibility)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-slate-400">
-                  <span>Utilizou o Cartão (100% Individual):</span>
-                  <span className="text-violet-300 font-medium">
-                    {formatCurrency(sum.individualResponsibility)}
-                  </span>
-                </div>
-                <div className="flex justify-between font-semibold pt-1.5 border-t border-slate-800">
-                  <span className="text-slate-300">Custo Justo Total:</span>
-                  <span className="text-white">
-                    {formatCurrency(sum.fairShareResponsibility)}
-                  </span>
-                </div>
-              </div>
-
-              <div
-                className={`rounded-xl px-3.5 py-2.5 flex items-center justify-between text-xs font-semibold ${
-                  sum.netBalance > 0.01
-                    ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
-                    : sum.netBalance < -0.01
-                    ? 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
-                    : 'bg-slate-800/60 text-slate-300'
-                }`}
-              >
-                <span>
-                  {sum.netBalance > 0.01
-                    ? 'Saldo a Receber:'
-                    : sum.netBalance < -0.01
-                    ? 'Saldo a Pagar:'
-                    : 'Saldo Quitado:'}
-                </span>
-                <span className="text-sm font-bold">
-                  {formatCurrency(Math.abs(sum.netBalance))}
-                </span>
-              </div>
             </div>
-          );
-        })}
 
-        {/* Card de Fechamento & Pix de Acerto */}
-        <div className="bg-gradient-to-br from-emerald-950/70 via-slate-900 to-slate-900 border border-emerald-500/40 rounded-2xl p-5 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-emerald-300 text-xs font-semibold uppercase tracking-wider mb-2">
-              <Scale className="w-4 h-4" />
-              Resumo do Acerto Mensal
-            </div>
-            <h3 className="text-lg font-bold text-white mb-1">
-              Como fechar as contas de {formatMonthLabel(selectedMonth)}?
-            </h3>
-            <p className="text-xs text-slate-300/80 mb-4">
-              Calculamos automaticamente todas as faturas de cartão, contas da casa e gastos individuais pagos no cartão um do outro.
-            </p>
-
-            {transfers.length === 0 ? (
-              <div className="bg-emerald-500/15 border border-emerald-500/30 rounded-xl p-4 text-center space-y-1">
-                <CheckCircle2 className="w-7 h-7 text-emerald-400 mx-auto" />
-                <div className="text-sm font-bold text-emerald-200">
-                  Contas 100% Equilibradas!
+            {monthSettlements.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-emerald-500/20 space-y-1.5">
+                <div className="text-[11px] font-semibold text-emerald-300">
+                  Acertos diretos já registrados neste mês:
                 </div>
-                <p className="text-xs text-emerald-300/80">
-                  Nenhuma transferência pendente entre os membros neste mês.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {transfers.map((tr, idx) => (
+                {monthSettlements.map((s) => (
                   <div
-                    key={idx}
-                    className="bg-slate-950/90 border border-emerald-500/30 rounded-xl p-4 space-y-3"
+                    key={s.id}
+                    className="flex items-center justify-between text-xs bg-slate-950/60 px-2.5 py-1.5 rounded-lg"
                   >
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-amber-300">
-                        {tr.fromMember.name}
-                      </span>
-                      <ArrowRight className="w-4 h-4 text-slate-400" />
-                      <span className="font-bold text-emerald-300">
-                        {tr.toMember.name}
-                      </span>
-                    </div>
-                    <div className="text-center py-1">
-                      <div className="text-[11px] text-slate-400">
-                        Valor exato para transferência / Pix:
-                      </div>
-                      <div className="text-2xl font-extrabold text-white">
-                        {formatCurrency(tr.amount)}
-                      </div>
-                    </div>
+                    <span className="text-slate-300">
+                      {memberMap[s.fromMemberId]?.name.split(' ')[0]} →{' '}
+                      {memberMap[s.toMemberId]?.name.split(' ')[0]}:{' '}
+                      <strong>{formatCurrency(s.amount)}</strong>
+                    </span>
                     <button
-                      onClick={() =>
-                        onAddSettlement({
-                          id: `settle-${Date.now()}`,
-                          competenceMonth: selectedMonth,
-                          fromMemberId: tr.fromMember.id,
-                          toMemberId: tr.toMember.id,
-                          amount: tr.amount,
-                          settledAt: new Date().toISOString().slice(0, 10),
-                        })
-                      }
-                      className="w-full py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition"
+                      onClick={() => onDeleteSettlement(s.id)}
+                      className="text-[11px] text-rose-400 hover:underline"
                     >
-                      <CheckCircle2 className="w-4 h-4" />
-                      Confirmar Pix / Marcar como Acertado
+                      Desfazer
                     </button>
                   </div>
                 ))}
               </div>
             )}
           </div>
-
-          {monthSettlements.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-emerald-500/20 space-y-1.5">
-              <div className="text-[11px] font-semibold text-emerald-300">
-                Acertos já realizados neste mês:
-              </div>
-              {monthSettlements.map((s) => (
-                <div
-                  key={s.id}
-                  className="flex items-center justify-between text-xs bg-slate-950/60 px-2.5 py-1.5 rounded-lg"
-                >
-                  <span className="text-slate-300">
-                    {memberMap[s.fromMemberId]?.name.split(' ')[0]} →{' '}
-                    {memberMap[s.toMemberId]?.name.split(' ')[0]}:{' '}
-                    <strong>{formatCurrency(s.amount)}</strong>
-                  </span>
-                  <button
-                    onClick={() => onDeleteSettlement(s.id)}
-                    className="text-[11px] text-rose-400 hover:underline"
-                  >
-                    Desfazer
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Tabela de Memória de Cálculo Detalhada */}
+      {/* SEÇÃO 3: Tabela de Memória de Cálculo Detalhada */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden">
         <div className="p-5 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
@@ -435,7 +642,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
               Memória de Cálculo Item a Item ({expenses.length} despesas)
             </h3>
             <p className="text-xs text-slate-400">
-              Veja exatamente quem pagou cada despesa e quanto cabe a cada membro
+              Veja exatamente a forma de pagamento, a fatura de destino e a parte de cada membro
             </p>
           </div>
           <div className="flex items-center gap-4 text-xs">
@@ -459,8 +666,8 @@ export const SharedView: React.FC<SharedViewProps> = ({
             <thead>
               <tr className="border-b border-slate-800 text-slate-400 bg-slate-950/60">
                 <th className="py-3 px-4 font-medium">Despesa</th>
-                <th className="py-3 px-4 font-medium">Dono do Cartão / Pagador</th>
-                <th className="py-3 px-4 font-medium">Quem Utilizou o Cartão</th>
+                <th className="py-3 px-4 font-medium">Forma / Pagador</th>
+                <th className="py-3 px-4 font-medium">Quem Utilizou</th>
                 <th className="py-3 px-4 font-medium">Regra de Divisão</th>
                 <th className="py-3 px-4 font-medium text-right">Valor Total</th>
                 {members.map((m) => (
@@ -507,14 +714,25 @@ export const SharedView: React.FC<SharedViewProps> = ({
                           {members.map((m) => (
                             <option key={m.id} value={m.id}>
                               {tx.paymentMethod === 'credit_card'
-                                ? `Dono do Cartão: ${m.name.split(' ')[0]}`
+                                ? `Titular: ${m.name.split(' ')[0]}`
                                 : `Pago por: ${m.name.split(' ')[0]}`}
                             </option>
                           ))}
                         </select>
-                        {card && (
-                          <span className="text-[10px] text-violet-300 font-medium">
-                            Cartão: {card.name}
+                        {card ? (
+                          <span className="text-[10px] text-violet-300 font-medium flex items-center gap-1">
+                            <CreditCardIcon className="w-3 h-3" />
+                            {card.name} (Fatura)
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400">
+                            {tx.paymentMethod === 'pix'
+                              ? 'Pix direto'
+                              : tx.paymentMethod === 'debit'
+                              ? 'Débito em conta'
+                              : tx.paymentMethod === 'boleto'
+                              ? 'Boleto'
+                              : 'Dinheiro'}
                           </span>
                         )}
                       </div>

@@ -1,6 +1,8 @@
 import {
   Category,
   CreditCard,
+  CardInvoiceBreakdown,
+  CardInvoiceMemberShare,
   Member,
   PaymentMethod,
   SplitType,
@@ -196,11 +198,14 @@ export function calculateTransactionShares(
 
 export interface MemberBalanceSummary {
   member: Member;
-  paidOutOfPocket: number;       // Total que este membro desembolsou (ou passou no próprio cartão)
-  fairShareResponsibility: number; // Quanto este membro realmente deveria custear (individuais dele + parte dele nos compartilhados)
+  paidOutOfPocket: number;       // Total desembolsado diretamente (ou fatura já paga se titular)
+  fairShareResponsibility: number; // Custo justo total do membro no mês (cartões + diretos)
   sharedResponsibility: number;    // Apenas a parte dele nos gastos compartilhados
   individualResponsibility: number; // Apenas gastos individuais dele
-  netBalance: number;              // Positivo = tem a receber; Negativo = tem a pagar
+  netBalance: number;              // Saldo líquido direto (apenas de contas fora do cartão)
+  cardsResponsibility: number;     // Total que deve destinar para faturas de cartão
+  directResponsibility: number;    // Total devido em contas diretas (Pix/Dinheiro)
+  directNetBalance: number;        // Saldo de acerto direto entre pessoas
 }
 
 export interface TransferSuggestion {
@@ -210,100 +215,218 @@ export interface TransferSuggestion {
 }
 
 /**
- * Calcula o balanço de finanças compartilhadas do mês e quem deve transferir quanto para quem.
+ * Calcula o detalhamento da fatura de cada cartão de crédito para o mês.
+ * O dinheiro vai para a fatura do cartão, e não abatido entre participantes!
+ */
+export function calculateCardInvoiceBreakdowns(
+  transactions: Transaction[],
+  cards: CreditCard[],
+  members: Member[]
+): CardInvoiceBreakdown[] {
+  const memberMap = new Map(members.map((m) => [m.id, m]));
+
+  return cards.map((card) => {
+    const cardTxs = transactions.filter(
+      (t) =>
+        t.type === 'expense' &&
+        t.paymentMethod === 'credit_card' &&
+        t.cardId === card.id
+    );
+
+    const invoiceTotal = cardTxs.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const isPaid = cardTxs.length > 0 && cardTxs.every((t) => t.isPaid);
+    const holder = memberMap.get(card.holderId);
+
+    const memberSharesMap: Record<
+      string,
+      { individual: number; shared: number; total: number }
+    > = {};
+
+    members.forEach((m) => {
+      memberSharesMap[m.id] = { individual: 0, shared: 0, total: 0 };
+    });
+
+    cardTxs.forEach((tx) => {
+      const shares = calculateTransactionShares(tx, members);
+      const isIndiv = tx.splitType === 'individual';
+      members.forEach((m) => {
+        const val = shares[m.id] || 0;
+        if (val > 0) {
+          if (isIndiv) {
+            memberSharesMap[m.id].individual += val;
+          } else {
+            memberSharesMap[m.id].shared += val;
+          }
+          memberSharesMap[m.id].total += val;
+        }
+      });
+    });
+
+    const memberShares: CardInvoiceMemberShare[] = members.map((m) => {
+      const st = memberSharesMap[m.id] || { individual: 0, shared: 0, total: 0 };
+      const percentage = invoiceTotal > 0 ? (st.total / invoiceTotal) * 100 : 0;
+      return {
+        memberId: m.id,
+        memberName: m.name,
+        avatarColor: m.avatarColor,
+        isHolder: m.id === card.holderId,
+        individualTotal: st.individual,
+        sharedTotal: st.shared,
+        totalShare: st.total,
+        percentage,
+      };
+    });
+
+    return {
+      card,
+      holder,
+      invoiceTotal,
+      isPaid,
+      memberShares,
+      transactionsCount: cardTxs.length,
+    };
+  });
+}
+
+/**
+ * Calcula o balanço mensal dividindo com precisão:
+ * 1. Faturas de Cartão (o valor é destinado à fatura do cartão respectivo)
+ * 2. Despesas Diretas (Pix/Dinheiro/Débito - acertadas diretamente entre pessoas sem abater cartão)
  */
 export function calculateMonthlySettlement(
   transactions: Transaction[],
   members: Member[],
-  alreadySettledAmountForPair?: { fromId: string; toId: string; amount: number }[]
+  alreadySettledAmountForPair?: { fromId: string; toId: string; amount: number }[],
+  cards: CreditCard[] = []
 ): {
   summaries: MemberBalanceSummary[];
   transfers: TransferSuggestion[];
+  cardBreakdowns: CardInvoiceBreakdown[];
   totalSharedExpenses: number;
   totalIndividualExpenses: number;
+  totalCardsInvoice: number;
+  totalDirectExpenses: number;
 } {
   const expenses = transactions.filter((t) => t.type === 'expense');
 
-  const paidMap: Record<string, number> = {};
-  const settledPaidMap: Record<string, number> = {};
-  const fairShareMap: Record<string, number> = {};
+  // 1. Detalhamento das faturas de cartão
+  const cardBreakdowns = calculateCardInvoiceBreakdowns(expenses, cards, members);
+  const totalCardsInvoice = cardBreakdowns.reduce(
+    (acc, b) => acc + b.invoiceTotal,
+    0
+  );
+
+  // Mapeia cotas de cartões por membro
+  const memberCardsRespMap: Record<string, number> = {};
+  members.forEach((m) => {
+    memberCardsRespMap[m.id] = 0;
+  });
+  cardBreakdowns.forEach((cb) => {
+    cb.memberShares.forEach((ms) => {
+      memberCardsRespMap[ms.memberId] =
+        (memberCardsRespMap[ms.memberId] || 0) + ms.totalShare;
+    });
+  });
+
+  // 2. Despesas diretas (fora de cartão de crédito: Pix, dinheiro, débito, boleto)
+  const directExpenses = expenses.filter((t) => t.paymentMethod !== 'credit_card');
+  const totalDirectExpenses = directExpenses.reduce((acc, t) => acc + t.amount, 0);
+
+  const directPaidMap: Record<string, number> = {};
+  const directFairShareMap: Record<string, number> = {};
   const sharedRespMap: Record<string, number> = {};
   const individualRespMap: Record<string, number> = {};
+  const fairShareMap: Record<string, number> = {};
+  const allPaidOutOfPocketMap: Record<string, number> = {};
 
   members.forEach((m) => {
-    paidMap[m.id] = 0;
-    settledPaidMap[m.id] = 0;
-    fairShareMap[m.id] = 0;
+    directPaidMap[m.id] = 0;
+    directFairShareMap[m.id] = 0;
     sharedRespMap[m.id] = 0;
     individualRespMap[m.id] = 0;
+    fairShareMap[m.id] = 0;
+    allPaidOutOfPocketMap[m.id] = 0;
   });
 
   let totalSharedExpenses = 0;
   let totalIndividualExpenses = 0;
 
   expenses.forEach((tx) => {
-    const payerId = tx.paidById || members[0]?.id;
     const shares = calculateTransactionShares(tx, members);
-    const assignedTotal = Object.values(shares).reduce((a, b) => a + b, 0);
+    const isIndiv = tx.splitType === 'individual';
 
-    if (payerId && paidMap[payerId] !== undefined) {
-      paidMap[payerId] += tx.amount;
-      settledPaidMap[payerId] += assignedTotal;
-    }
-
-    if (tx.splitType === 'individual') {
+    if (isIndiv) {
       totalIndividualExpenses += tx.amount;
     } else {
       totalSharedExpenses += tx.amount;
     }
 
+    // Se a despesa já foi paga (ou se for direta), registra o desembolso
+    const payerId = tx.paidById || members[0]?.id;
+    if (payerId && (tx.paymentMethod !== 'credit_card' || tx.isPaid)) {
+      allPaidOutOfPocketMap[payerId] =
+        (allPaidOutOfPocketMap[payerId] || 0) + tx.amount;
+    }
+
+    if (tx.paymentMethod !== 'credit_card') {
+      if (payerId) {
+        directPaidMap[payerId] = (directPaidMap[payerId] || 0) + tx.amount;
+      }
+    }
+
     members.forEach((m) => {
       const share = shares[m.id] || 0;
       fairShareMap[m.id] += share;
-      if (tx.splitType === 'individual') {
+      if (isIndiv) {
         individualRespMap[m.id] += share;
       } else {
         sharedRespMap[m.id] += share;
       }
+
+      if (tx.paymentMethod !== 'credit_card') {
+        directFairShareMap[m.id] += share;
+      }
     });
   });
 
-  // Ajusta acertos já realizados no mês
+  // Ajusta acertos diretos já realizados entre membros
   if (alreadySettledAmountForPair) {
     alreadySettledAmountForPair.forEach((s) => {
-      if (paidMap[s.fromId] !== undefined) paidMap[s.fromId] += s.amount;
-      if (paidMap[s.toId] !== undefined) paidMap[s.toId] -= s.amount;
-      if (settledPaidMap[s.fromId] !== undefined)
-        settledPaidMap[s.fromId] += s.amount;
-      if (settledPaidMap[s.toId] !== undefined)
-        settledPaidMap[s.toId] -= s.amount;
+      if (directPaidMap[s.fromId] !== undefined) directPaidMap[s.fromId] += s.amount;
+      if (directPaidMap[s.toId] !== undefined) directPaidMap[s.toId] -= s.amount;
     });
   }
 
+  // 3. Resumos por membro
   const summaries: MemberBalanceSummary[] = members.map((m) => {
-    const paidOutOfPocket = paidMap[m.id] || 0;
-    const effectivePaidForSettlement = settledPaidMap[m.id] || 0;
-    const fairShareResponsibility = fairShareMap[m.id] || 0;
-    const netBalance = effectivePaidForSettlement - fairShareResponsibility;
+    const cardsResp = memberCardsRespMap[m.id] || 0;
+    const directResp = directFairShareMap[m.id] || 0;
+    const directPaid = directPaidMap[m.id] || 0;
+    // O saldo a pagar/receber entre pessoas é APENAS o de despesas diretas!
+    const directNetBalance = directPaid - directResp;
+
     return {
       member: m,
-      paidOutOfPocket,
-      fairShareResponsibility,
+      paidOutOfPocket: allPaidOutOfPocketMap[m.id] || 0,
+      fairShareResponsibility: fairShareMap[m.id] || 0,
       sharedResponsibility: sharedRespMap[m.id] || 0,
       individualResponsibility: individualRespMap[m.id] || 0,
-      netBalance,
+      netBalance: directNetBalance,
+      cardsResponsibility: cardsResp,
+      directResponsibility: directResp,
+      directNetBalance,
     };
   });
 
-  // Algoritmo guloso para minimizar transferências entre devedores e credores
+  // 4. Transferências diretas entre devedores e credores de contas diretas (sem abater faturas)
   const debtors = summaries
-    .filter((s) => s.netBalance < -0.01)
-    .map((s) => ({ member: s.member, amount: Math.abs(s.netBalance) }))
+    .filter((s) => s.directNetBalance < -0.01)
+    .map((s) => ({ member: s.member, amount: Math.abs(s.directNetBalance) }))
     .sort((a, b) => b.amount - a.amount);
 
   const creditors = summaries
-    .filter((s) => s.netBalance > 0.01)
-    .map((s) => ({ member: s.member, amount: s.netBalance }))
+    .filter((s) => s.directNetBalance > 0.01)
+    .map((s) => ({ member: s.member, amount: s.directNetBalance }))
     .sort((a, b) => b.amount - a.amount);
 
   const transfers: TransferSuggestion[] = [];
@@ -333,8 +456,11 @@ export function calculateMonthlySettlement(
   return {
     summaries,
     transfers,
+    cardBreakdowns,
     totalSharedExpenses,
     totalIndividualExpenses,
+    totalCardsInvoice,
+    totalDirectExpenses,
   };
 }
 

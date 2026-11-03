@@ -15,6 +15,7 @@ import {
   formatMonthLabel,
   parseExactNumber,
   SPLIT_TYPE_LABELS,
+  calculateCardInvoiceBreakdowns,
 } from '../utils/financeUtils';
 
 interface CardsViewProps {
@@ -86,6 +87,16 @@ export const CardsView: React.FC<CardsViewProps> = ({
 
   const memberMap = Object.fromEntries(members.map((m) => [m.id, m]));
   const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c]));
+
+  // Divisão de faturas por participante (o valor vai para o cartão)
+  const cardBreakdowns = calculateCardInvoiceBreakdowns(
+    monthTransactions,
+    cards,
+    members
+  );
+  const breakdownMap = Object.fromEntries(
+    cardBreakdowns.map((b) => [b.card.id, b])
+  );
 
   // Estatísticas por cartão
   const cardStats = cards.map((card) => {
@@ -336,6 +347,54 @@ export const CardsView: React.FC<CardsViewProps> = ({
                     )}
                   </div>
                 </div>
+
+                {/* Detalhamento da fatura por participante */}
+                {breakdownMap[card.id] && breakdownMap[card.id].invoiceTotal > 0 && (
+                  <div className="bg-slate-950/60 rounded-xl p-3 mb-4 border border-slate-800/80 space-y-2">
+                    <div className="flex items-center justify-between text-[11px] font-medium text-slate-400">
+                      <span className="flex items-center gap-1.5 text-slate-300">
+                        <Users className="w-3.5 h-3.5 text-violet-400" />
+                        Divisão da Fatura:
+                      </span>
+                      <span className="text-[10px] text-violet-400/90 font-medium">
+                        Vai para o cartão
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {breakdownMap[card.id].memberShares
+                        .filter((ms) => ms.totalShare > 0)
+                        .map((ms) => (
+                          <div
+                            key={ms.memberId}
+                            className="flex items-center justify-between text-xs bg-slate-900/80 px-2.5 py-1.5 rounded-lg border border-slate-800/60"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: ms.avatarColor }}
+                              />
+                              <span className="text-slate-200 font-medium truncate max-w-[110px]">
+                                {ms.memberName.split(' ')[0]}
+                              </span>
+                              {ms.isHolder && (
+                                <span className="text-[9px] bg-slate-800 text-slate-400 px-1 py-0.5 rounded font-normal">
+                                  Titular
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-right flex items-center gap-1.5">
+                              <span className="font-bold text-white">
+                                {formatCurrency(ms.totalShare)}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                ({ms.percentage.toFixed(0)}%)
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Barra de Limite Comprometido (Incluindo parcelas futuras) */}
                 <div className="space-y-1.5">

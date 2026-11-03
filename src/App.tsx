@@ -759,6 +759,7 @@ export function App() {
             cards={state.cards}
             monthTransactions={monthTransactions}
             settlements={state.settlements}
+            onPayCardInvoice={handlePayCardInvoice}
             onUpdateMember={handleUpdateMember}
             onAddMember={handleAddMember}
             onDeleteMember={handleDeleteMember}

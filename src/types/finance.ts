@@ -64,6 +64,26 @@ export interface Transaction {
   notes?: string;
 }
 
+export interface CardInvoiceMemberShare {
+  memberId: string;
+  memberName: string;
+  avatarColor: string;
+  isHolder: boolean;
+  individualTotal: number;
+  sharedTotal: number;
+  totalShare: number;
+  percentage: number;
+}
+
+export interface CardInvoiceBreakdown {
+  card: CreditCard;
+  holder?: Member;
+  invoiceTotal: number;
+  isPaid: boolean;
+  memberShares: CardInvoiceMemberShare[];
+  transactionsCount: number;
+}
+
 export interface SettlementRecord {
   id: string;
   competenceMonth: string; // YYYY-MM
@@ -72,6 +92,7 @@ export interface SettlementRecord {
   amount: number;
   settledAt: string;
   note?: string;
+  cardId?: string;
 }
 
 export interface FinanceState {
