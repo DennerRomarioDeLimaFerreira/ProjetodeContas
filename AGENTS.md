@@ -35,11 +35,12 @@ Todas as interações e modificações neste projeto DEVEM obedecer rigorosament
 
 Sempre que qualquer alteração for realizada no projeto, execute antes de concluir:
 
-1. **Auditoria de QA (`qa-guardian` / `npm run qa:check`):**
-   - Validação de tipos (`tsc -b`).
+1. **Auditoria de QA (`qa-guardian` / `npm run qa:check` ou `npm run qa:scorecard`):**
+   - Validação de tipos estrita (`tsc -b`).
+   - Testes unitários automatizados com Vitest (`npm test`): precisão financeira, cotas de faturas sem abatimento cruzado, invariantes numéricas e isolamento multi-tenant.
    - Auditoria de layout responsivo e anti-corte (`node scripts/qa-layout-audit.mjs`).
-   - Build de produção (`vite build`).
-   - Linter e integridade do React Compiler (`npx oxlint`).
+   - Build de produção minificado e monitoramento de bundle (`vite build`).
+   - Relatório Scorecard consolidado no terminal com aprovação Zero-Defect.
 2. **Auditoria de Segurança & LGPD (`sec-lgpd-auditor` / `npm run audit:security`):**
    - Varredura contra vazamento de credenciais, CVV e cartões completos.
    - Validação de isolamento de dados por usuário.

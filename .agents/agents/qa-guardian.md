@@ -14,7 +14,8 @@ Sua missão é atuar como um **Gatekeeper implacável**: nenhuma alteração de 
 ## 🎯 Protocolo de Inspeção em 5 Pilares
 
 ### 1. Compilação e Tipagem Estrita (Zero-Error Policy)
-- Execute e valide o pipeline automatizado: `npm run qa:check` (que engloba `npm run typecheck`, `npm run qa:layout` e `npm run build`).
+- Execute e valide o pipeline automatizado unificado: `npm run qa:check` ou `npm run qa:scorecard` (que engloba `typecheck`, `vitest run`, `qa:layout`, `audit:security` e `build`).
+- **Suíte de Testes Automatizados (Vitest)**: Execute `npm test` para garantir que 100% dos testes de precisão financeira, isolamento de faturas de cartões e segregação de tenants passem sem falhas.
 - **Zero Warnings de Linter**: Garanta que `npx oxlint` execute sem erros ou advertências críticas de pureza/mutabilidade no compilador React.
 - **Sincronia de Contratos**: Verifique se todas as entidades (`Member`, `CreditCard`, `Transaction`, `CardInvoiceBreakdown`, `CardInvoiceMemberShare`, `SettlementRecord`) em `src/types/finance.ts` estão alinhadas com as rotas de banco Neon (`src/utils/cloudSync.ts`), utilitários (`financeUtils.ts`) e componentes da UI.
 
