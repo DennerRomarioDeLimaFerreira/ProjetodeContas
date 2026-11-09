@@ -77,7 +77,38 @@ export function App() {
     try {
       if (!currentSession) return createInitialFinanceState();
       const userKey = getUserLocalStorageStateKey(currentSession.user);
-      const saved = localStorage.getItem(userKey);
+      let saved = localStorage.getItem(userKey);
+
+      // Auto-recuperação segura exclusiva para o ROOT a partir do cache legado do navegador
+      if (currentSession.user.role === 'ROOT') {
+        let currentParsed: FinanceState | null = null;
+        if (saved) {
+          try {
+            currentParsed = JSON.parse(saved) as FinanceState;
+          } catch {
+            currentParsed = null;
+          }
+        }
+        if (!currentParsed || (currentParsed.transactions?.length === 0 && currentParsed.cards?.length === 0)) {
+          const legacyKeys = ['duofinance_state_real_v1', 'duofinance_state_v1', 'duofinance_state'];
+          for (const legKey of legacyKeys) {
+            const rawLeg = localStorage.getItem(legKey);
+            if (rawLeg) {
+              try {
+                const legObj = JSON.parse(rawLeg) as FinanceState;
+                if (legObj.transactions?.length > 0 || legObj.cards?.length > 0) {
+                  saved = rawLeg;
+                  localStorage.setItem(userKey, rawLeg);
+                  break;
+                }
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
+      }
+
       if (saved) {
         const parsed = JSON.parse(saved) as FinanceState;
         if (parsed.members && parsed.categories && parsed.transactions) {
@@ -134,8 +165,12 @@ export function App() {
       const currentStoreKey = getStoreKeyForUser(currentSession.user);
       const { state: remoteState } = await loadCloudFinanceState(currentStoreKey);
 
-      if (remoteState) {
-        // Nuvem já possui estado para este usuário específico -> carrega na tela
+      const remoteHasData = remoteState && (remoteState.transactions?.length > 0 || remoteState.cards?.length > 0);
+      const localState = loadStateForSession(currentSession);
+      const localHasData = localState && (localState.transactions?.length > 0 || localState.cards?.length > 0);
+
+      if (remoteHasData) {
+        // Nuvem já possui dados para este usuário específico -> carrega na tela
         skipNextCloudSave.current = true;
         setState(remoteState);
         const userKey = getUserLocalStorageStateKey(currentSession.user);
@@ -144,6 +179,15 @@ export function App() {
         } catch {
           // ignore
         }
+      } else if (currentSession.user.role === 'ROOT' && localHasData) {
+        // Auto-recuperação do ROOT: se a nuvem estiver vazia mas o local tiver dados legados recuperados, restaura na nuvem!
+        skipNextCloudSave.current = true;
+        setState(localState);
+        await saveCloudFinanceState(localState, currentStoreKey);
+      } else if (remoteState) {
+        // Nuvem existe com estado inicial
+        skipNextCloudSave.current = true;
+        setState(remoteState);
       } else {
         // Usuário novo não possui store na nuvem ainda.
         // Garante que o usuário novo SEMPRE inicie com estado limpo (sem herdar dados alheios)!
