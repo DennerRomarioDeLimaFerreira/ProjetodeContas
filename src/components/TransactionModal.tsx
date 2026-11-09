@@ -7,6 +7,7 @@ import {
   DollarSign,
   Layers,
   Plus,
+  Receipt,
   Repeat,
   Tag,
   UserPlus,
@@ -90,7 +91,6 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
   const [showInlineMember, setShowInlineMember] = useState(false);
   const [inlineMemberName, setInlineMemberName] = useState('');
-  const [inlineMemberIncome, setInlineMemberIncome] = useState('0');
 
   const [description, setDescription] = useState('');
   const [amountInput, setAmountInput] = useState('');
@@ -195,20 +195,31 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setDate(today);
       const firstExpCat = categories.find((c) => c.type !== 'income');
       setCategoryId(firstExpCat?.id || categories[0]?.id || '');
+      const isDirect = preselectedCardId === 'direct';
       const defaultCard =
-        (preselectedCardId
+        !isDirect &&
+        ((preselectedCardId
           ? cards.find((c) => c.id === preselectedCardId)
-          : undefined) || cards[0];
-      setPaymentMethod(defaultCard ? 'credit_card' : 'pix');
-      setCardId(defaultCard?.id || '');
+          : undefined) || cards[0]);
+
+      if (isDirect || !defaultCard) {
+        setPaymentMethod('boleto');
+        setCardId('');
+        const initialOwner = members[0]?.id || '';
+        setPaidById(initialOwner);
+        setUsedById(initialOwner);
+        setBeneficiaryId(initialOwner);
+        setParticipantIds(initialOwner ? [initialOwner] : []);
+      } else {
+        setPaymentMethod('credit_card');
+        setCardId(defaultCard.id);
+        const initialOwner = defaultCard.holderId || members[0]?.id || '';
+        setPaidById(initialOwner);
+        setUsedById(initialOwner);
+        setBeneficiaryId(initialOwner);
+        setParticipantIds(initialOwner ? [initialOwner] : []);
+      }
       setInstallments(1);
-      const initialOwner = defaultCard?.holderId || members[0]?.id || '';
-      setPaidById(initialOwner);
-      setUsedById(initialOwner);
-      setSplitType('individual');
-      setSplitCount(1);
-      setParticipantIds(initialOwner ? [initialOwner] : []);
-      setBeneficiaryId(initialOwner);
 
       const equalPct = Number((100 / Math.max(1, allMemberIds.length)).toFixed(2));
       const initMap: Record<string, number> = {};
@@ -520,7 +531,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           customSplits,
           isRecurring: true,
           isPaid:
-            i === 0 ? (paymentMethod === 'credit_card' ? isPaid : true) : false,
+            i === 0 ? isPaid : false,
         });
       }
     } else {
@@ -542,7 +553,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         beneficiaryId: effectiveBeneficiary,
         customSplits,
         isRecurring,
-        isPaid: paymentMethod === 'credit_card' ? isPaid : true,
+        isPaid,
       });
     }
 
@@ -783,27 +794,44 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           {/* Forma de Pagamento & Cartão */}
           {type === 'expense' && (
             <div className="space-y-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1.5 h-5">
-                    Método de Pagamento
-                  </label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) =>
-                      setPaymentMethod(e.target.value as PaymentMethod)
+              {/* Segmented Button: No Cartão vs Fora do Cartão */}
+              <div className="p-1 bg-slate-900 border border-slate-800 rounded-xl grid grid-cols-2 gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentMethod('credit_card');
+                    if (!cardId && cards.length > 0) setCardId(cards[0].id);
+                  }}
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-semibold transition ${
+                    paymentMethod === 'credit_card'
+                      ? 'bg-violet-600 text-white font-bold shadow-lg shadow-violet-600/20'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <CreditCardIcon className="w-4 h-4" />
+                  No Cartão de Crédito
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (paymentMethod === 'credit_card') {
+                      setPaymentMethod('boleto');
+                      setInstallments(1);
                     }
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="credit_card">Cartão de Crédito</option>
-                    <option value="pix">Pix</option>
-                    <option value="debit">Cartão de Débito</option>
-                    <option value="boleto">Boleto Bancário</option>
-                    <option value="cash">Dinheiro</option>
-                  </select>
-                </div>
+                  }}
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-semibold transition ${
+                    paymentMethod !== 'credit_card'
+                      ? 'bg-emerald-500 text-slate-950 font-bold shadow-lg shadow-emerald-500/20'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Receipt className="w-4 h-4" />
+                  Fora do Cartão (Boleto / Pix / Contas)
+                </button>
+              </div>
 
-                {paymentMethod === 'credit_card' ? (
+              {paymentMethod === 'credit_card' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-slate-400 mb-1.5 h-5">
                       <CreditCardIcon className="w-3.5 h-3.5 inline mr-1" />
@@ -821,29 +849,128 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       ))}
                     </select>
                   </div>
-                ) : (
+
                   <div>
                     <label className="block text-xs font-medium text-slate-400 mb-1.5 h-5">
-                      Quem realizou o pagamento?
+                      Situação da Compra
                     </label>
-                    <select
-                      value={paidById}
-                      onChange={(e) => {
-                        setPaidById(e.target.value);
-                        setUsedById(e.target.value);
-                        setBeneficiaryId(e.target.value);
-                      }}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
-                    >
-                      {members.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
+                    <label className="flex items-center gap-2.5 h-[42px] px-3.5 bg-slate-900 border border-slate-800 rounded-xl cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isPaid}
+                        onChange={(e) => setIsPaid(e.target.checked)}
+                        className="accent-emerald-500 w-4 h-4 rounded"
+                      />
+                      <span className="text-xs text-slate-300">
+                        {isPaid ? '✓ Fatura já paga no fechamento' : '⏳ Aguardando fechamento/pagamento da fatura'}
+                      </span>
+                    </label>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                /* Bloco Exclusivo: Fora do Cartão */
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1.5">
+                        Tipo de Despesa Externa
+                      </label>
+                      <select
+                        value={paymentMethod}
+                        onChange={(e) =>
+                          setPaymentMethod(e.target.value as PaymentMethod)
+                        }
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="boleto">Boleto Bancário</option>
+                        <option value="pix">Pix Direto</option>
+                        <option value="debit">Cartão de Débito</option>
+                        <option value="cash">Dinheiro em Espécie</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1.5">
+                        Quem pagou ou é responsável?
+                      </label>
+                      <select
+                        value={paidById}
+                        onChange={(e) => {
+                          setPaidById(e.target.value);
+                          setUsedById(e.target.value);
+                          setBeneficiaryId(e.target.value);
+                        }}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        {members.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1.5">
+                        Status do Pagamento
+                      </label>
+                      <label className="flex items-center gap-2 h-[38px] px-3 bg-slate-900 border border-slate-800 rounded-xl cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isPaid}
+                          onChange={(e) => setIsPaid(e.target.checked)}
+                          className="accent-emerald-500 w-4 h-4 rounded"
+                        />
+                        <span className="text-xs text-slate-300 font-medium">
+                          {isPaid ? '✓ Já está pago' : '⏳ Pendente (A vencer)'}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Vencimento / Competência da Conta */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800/80">
+                    <div>
+                      <label className="block text-xs font-medium text-emerald-300 mb-1.5">
+                        <Calendar className="w-3.5 h-3.5 inline mr-1" />
+                        Mês de Vencimento / Competência
+                      </label>
+                      <select
+                        value={firstCompetence}
+                        onChange={(e) =>
+                          setFirstCompetenceOverride(e.target.value)
+                        }
+                        className="w-full bg-slate-900 border border-emerald-500/40 rounded-xl px-3 py-2 text-sm font-semibold text-emerald-200 focus:outline-none focus:border-emerald-500"
+                      >
+                        {competenceOptions.map((m) => (
+                          <option key={m} value={m}>
+                            {formatMonthLabel(m)}
+                            {m === selectedMonth ? ' (Mês atual na tela)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1.5">
+                        <Repeat className="w-3.5 h-3.5 inline mr-1" />
+                        Conta Fixa / Recorrente?
+                      </label>
+                      <label className="flex items-center gap-2 h-[38px] px-3 bg-slate-900 border border-slate-800 rounded-xl cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isRecurring}
+                          onChange={(e) => setIsRecurring(e.target.checked)}
+                          className="accent-emerald-500 w-4 h-4 rounded"
+                        />
+                        <span className="text-xs text-slate-300">
+                          Repetir todo mês (ex: Aluguel, Luz)
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Dono do Cartão vs Pessoa que Utilizou o Cartão */}
               {paymentMethod === 'credit_card' && (
@@ -1155,23 +1282,6 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
                     />
                   </div>
-                  <div className="w-full sm:w-36">
-                    <label className="block text-[11px] text-slate-400 mb-1">
-                      Renda Base (R$)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={inlineMemberIncome}
-                      onChange={(e) => setInlineMemberIncome(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                        }
-                      }}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
-                    />
-                  </div>
                   <button
                     type="button"
                     onClick={() => {
@@ -1188,10 +1298,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                         name: inlineMemberName.trim(),
                         role: 'Participante',
                         avatarColor: palette[members.length % palette.length],
-                        monthlyIncome: Math.max(
-                          0,
-                          parseExactNumber(inlineMemberIncome)
-                        ),
+                        monthlyIncome: 0,
                       };
                       onAddMember(newMember);
                       if (splitType === 'individual') {
@@ -1211,7 +1318,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                       setInlineMemberName('');
                       setShowInlineMember(false);
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-500 text-slate-950 font-bold text-xs shrink-0"
+                    className="px-4 py-2 rounded-lg bg-emerald-500 text-slate-950 font-bold text-xs shrink-0"
                   >
                     Incluir
                   </button>
@@ -1356,11 +1463,11 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   </div>
 
                   {/* Regra de cálculo entre os participantes */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => setSplitType('shared_equal')}
-                      className={`p-2 rounded-xl border text-left transition ${
+                      className={`p-2.5 rounded-xl border text-left transition ${
                         splitType === 'shared_equal'
                           ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
                           : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
@@ -1370,31 +1477,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                         Partes Iguais (÷ {effectiveDivisor})
                       </div>
                       <div className="text-[10px] opacity-75">
-                        Valor igual para cada pessoa
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setSplitType('shared_proportional')}
-                      className={`p-2 rounded-xl border text-left transition ${
-                        splitType === 'shared_proportional'
-                          ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
-                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <div className="text-xs font-semibold">
-                        Proporcional à Renda
-                      </div>
-                      <div className="text-[10px] opacity-75">
-                        Conforme salário de cada um
+                        Valor dividido igualmente entre os participantes
                       </div>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setSplitType('shared_custom')}
-                      className={`p-2 rounded-xl border text-left transition ${
+                      className={`p-2.5 rounded-xl border text-left transition ${
                         splitType === 'shared_custom'
                           ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200'
                           : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
@@ -1404,7 +1494,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                         Percentual Manual (%)
                       </div>
                       <div className="text-[10px] opacity-75">
-                        Defina % exata de cada pessoa
+                        Defina a porcentagem exata de cada um
                       </div>
                     </button>
                   </div>

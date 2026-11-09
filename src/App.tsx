@@ -791,7 +791,7 @@ export function App() {
               },
               {
                 id: 'cards',
-                label: 'Cartões & Parcelas',
+                label: 'Cartões & Contas',
                 icon: CreditCardIcon,
               },
               {
@@ -806,7 +806,7 @@ export function App() {
               },
               {
                 id: 'budgets',
-                label: 'Metas & 50-30-20',
+                label: 'Metas & Categorias',
                 icon: Target,
               },
             ].map((item) => {
@@ -900,6 +900,17 @@ export function App() {
             onOpenNewTransactionWithCard={(cardId) => {
               setEditingTx(null);
               setPreselectedCardId(cardId);
+              setIsTxModalOpen(true);
+            }}
+            onTogglePaid={(txId) => handleTogglePaid(txId)}
+            onEditTransaction={(tx) => {
+              setEditingTx(tx);
+              setIsTxModalOpen(true);
+            }}
+            onDeleteTransaction={handleDeleteTransaction}
+            onOpenNewDirectExpense={() => {
+              setEditingTx(null);
+              setPreselectedCardId('direct');
               setIsTxModalOpen(true);
             }}
           />
@@ -1123,7 +1134,7 @@ export function App() {
                   className="accent-emerald-500 w-4 h-4 rounded"
                 />
                 <span>
-                  Restaurar também categorias personalizadas e rendas dos membros para o padrão inicial
+                  Restaurar também categorias personalizadas e membros para o padrão inicial
                 </span>
               </label>
             </div>

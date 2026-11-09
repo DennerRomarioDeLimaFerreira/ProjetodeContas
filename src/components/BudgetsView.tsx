@@ -28,7 +28,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
   selectedMonth,
   categories,
   monthTransactions,
-  members,
+  members: _members,
   onUpdateCategory,
   onAddCategory,
   onDeleteCategory,
@@ -54,13 +54,9 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
     0
   );
   const totalSpent = expenses.reduce((acc, t) => acc + t.amount, 0);
+  const budgetBalance = totalBudgeted - totalSpent;
 
-  const combinedIncome = members.reduce(
-    (acc, m) => acc + (m.monthlyIncome || 0),
-    0
-  );
-
-  // Regra 50-30-20
+  // Gastos Essenciais vs Estilo de Vida
   const needsSpent = expenses
     .filter((t) => {
       const cat = categories.find((c) => c.id === t.categoryId);
@@ -74,8 +70,6 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
       return cat?.essentialType !== 'needs';
     })
     .reduce((acc, t) => acc + t.amount, 0);
-
-  const savingsLeft = Math.max(0, combinedIncome - totalSpent);
 
   const handleSaveCategoryEdit = (cat: Category) => {
     onUpdateCategory({
@@ -113,7 +107,7 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <Target className="w-5 h-5 text-emerald-400" />
-            Categorias, Metas de Gastos & Regra 50-30-20
+            Categorias & Metas de Gastos
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
             Adicione, edite ou exclua categorias e defina tetos mensais para{' '}
@@ -209,70 +203,71 @@ export const BudgetsView: React.FC<BudgetsViewProps> = ({
         </form>
       )}
 
-      {/* Resumo Regra 50-30-20 + Teto Total */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Resumo de Metas e Orçamento Total */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4">
           <div className="text-xs text-slate-400">Orçamento Planejado Total</div>
           <div className="text-xl font-bold text-white mt-1">
             {formatCurrency(totalBudgeted)}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">
-            Gasto atual: <strong>{formatCurrency(totalSpent)}</strong> (
-            {totalBudgeted > 0
-              ? `${((totalSpent / totalBudgeted) * 100).toFixed(2)}%`
-              : '0%'}
-            )
+          <div className="text-[11px] text-slate-500 mt-1">
+            Soma das metas de todas as categorias
           </div>
         </div>
 
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4">
           <div className="flex justify-between text-xs">
-            <span className="text-slate-400">Essenciais (Ideal: 50%)</span>
-            <span className="font-bold text-blue-400">
-              {combinedIncome > 0
-                ? `${((needsSpent / combinedIncome) * 100).toFixed(2)}%`
+            <span className="text-slate-400">Total Gasto no Mês</span>
+            <span
+              className={`font-bold ${
+                totalBudgeted > 0 && totalSpent > totalBudgeted
+                  ? 'text-rose-400'
+                  : 'text-emerald-400'
+              }`}
+            >
+              {totalBudgeted > 0
+                ? `${((totalSpent / totalBudgeted) * 100).toFixed(1)}%`
                 : '0%'}
             </span>
           </div>
-          <div className="text-lg font-bold text-white mt-1">
-            {formatCurrency(needsSpent)}
+          <div className="text-xl font-bold text-white mt-1">
+            {formatCurrency(totalSpent)}
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
-            Teto sugerido (50%): {formatCurrency(combinedIncome * 0.5)}
+            {expenses.length} lançamentos de despesa
           </div>
         </div>
 
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4">
           <div className="flex justify-between text-xs">
-            <span className="text-slate-400">Estilo de Vida (Ideal: 30%)</span>
-            <span className="font-bold text-amber-400">
-              {combinedIncome > 0
-                ? `${((wantsSpent / combinedIncome) * 100).toFixed(2)}%`
-                : '0%'}
+            <span className="text-slate-400">Saldo da Meta</span>
+            <span
+              className={`font-bold ${
+                budgetBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'
+              }`}
+            >
+              {budgetBalance >= 0 ? 'Dentro do teto' : 'Estourado'}
             </span>
           </div>
-          <div className="text-lg font-bold text-white mt-1">
-            {formatCurrency(wantsSpent)}
+          <div
+            className={`text-xl font-bold mt-1 ${
+              budgetBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'
+            }`}
+          >
+            {formatCurrency(budgetBalance)}
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
-            Teto sugerido (30%): {formatCurrency(combinedIncome * 0.3)}
+            {budgetBalance >= 0 ? 'Disponível para gastar' : 'Excedido no mês'}
           </div>
         </div>
 
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4">
-          <div className="flex justify-between text-xs">
-            <span className="text-slate-400">Livre / Poupança (Ideal: 20%)</span>
-            <span className="font-bold text-emerald-400">
-              {combinedIncome > 0
-                ? `${((savingsLeft / combinedIncome) * 100).toFixed(2)}%`
-                : '0%'}
-            </span>
+          <div className="text-xs text-slate-400">Essenciais vs Estilo de Vida</div>
+          <div className="text-sm font-bold text-blue-400 mt-1">
+            Essencial: {formatCurrency(needsSpent)}
           </div>
-          <div className="text-lg font-bold text-emerald-400 mt-1">
-            {formatCurrency(savingsLeft)}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-1">
-            Meta sugerida (20%): {formatCurrency(combinedIncome * 0.2)}
+          <div className="text-xs font-semibold text-amber-400 mt-1">
+            Estilo de Vida: {formatCurrency(wantsSpent)}
           </div>
         </div>
       </div>

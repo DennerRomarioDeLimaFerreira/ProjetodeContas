@@ -5,6 +5,7 @@ import {
   CreditCard as CreditCardIcon,
   Edit2,
   Edit3,
+  Receipt,
   Scale,
   Sparkles,
   Trash2,
@@ -22,7 +23,6 @@ import {
   calculateTransactionShares,
   formatCurrency,
   formatMonthLabel,
-  parseExactNumber,
   SPLIT_TYPE_LABELS,
 } from '../utils/financeUtils';
 
@@ -61,16 +61,9 @@ export const SharedView: React.FC<SharedViewProps> = ({
 }) => {
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-  const [editIncome, setEditIncome] = useState('');
 
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
-  const [newMemberIncome, setNewMemberIncome] = useState('4500');
-
-  const totalHouseholdIncome = members.reduce(
-    (acc, m) => acc + (m.monthlyIncome || 0),
-    0
-  );
 
   const monthSettlements = settlements.filter(
     (s) => s.competenceMonth === selectedMonth
@@ -101,14 +94,12 @@ export const SharedView: React.FC<SharedViewProps> = ({
   const startEditingMember = (m: Member) => {
     setEditingMemberId(m.id);
     setEditName(m.name);
-    setEditIncome(String(m.monthlyIncome));
   };
 
   const saveMemberEdit = (m: Member) => {
     onUpdateMember({
       ...m,
       name: editName.trim() || m.name,
-      monthlyIncome: Math.max(0, parseExactNumber(editIncome)),
     });
     setEditingMemberId(null);
   };
@@ -122,7 +113,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
       name: newMemberName.trim(),
       role: 'Participante',
       avatarColor: colors[members.length % colors.length],
-      monthlyIncome: Math.max(0, parseExactNumber(newMemberIncome)),
+      monthlyIncome: 0,
     });
     setNewMemberName('');
     setShowAddMember(false);
@@ -169,21 +160,9 @@ export const SharedView: React.FC<SharedViewProps> = ({
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
             />
           </div>
-          <div className="w-full sm:w-48">
-            <label className="block text-xs text-slate-400 mb-1">
-              Renda Mensal (R$)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={newMemberIncome}
-              onChange={(e) => setNewMemberIncome(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
-            />
-          </div>
           <button
             type="submit"
-            className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-semibold text-xs"
+            className="px-5 py-2.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs"
           >
             Adicionar
           </button>
@@ -386,11 +365,6 @@ export const SharedView: React.FC<SharedViewProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {summaries.map((sum) => {
-            const incomeWeight =
-              totalHouseholdIncome > 0
-                ? ((sum.member.monthlyIncome / totalHouseholdIncome) * 100).toFixed(2)
-                : (100 / members.length).toFixed(2);
-
             const isEditing = editingMemberId === sum.member.id;
 
             return (
@@ -421,8 +395,8 @@ export const SharedView: React.FC<SharedViewProps> = ({
                           </h3>
                         )}
                         <p className="text-[11px] text-slate-400">
-                          Peso Proporcional na Casa:{' '}
-                          <strong className="text-emerald-400">{incomeWeight}%</strong>
+                          Total no mês:{' '}
+                          <strong className="text-white">{formatCurrency(sum.fairShareResponsibility)}</strong>
                         </p>
                       </div>
                     </div>
@@ -439,7 +413,7 @@ export const SharedView: React.FC<SharedViewProps> = ({
                         <button
                           onClick={() => startEditingMember(sum.member)}
                           className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
-                          title="Alterar nome e renda"
+                          title="Alterar nome"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
@@ -456,30 +430,8 @@ export const SharedView: React.FC<SharedViewProps> = ({
                     )}
                   </div>
 
-                  {isEditing && (
-                    <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">
-                        Renda Mensal Base (R$)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={editIncome}
-                        onChange={(e) => setEditIncome(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
-                      />
-                    </div>
-                  )}
-
                   <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3.5 space-y-2 text-xs">
                     <div className="flex justify-between text-slate-400">
-                      <span>Renda cadastrada:</span>
-                      <span className="text-slate-200 font-medium">
-                        {formatCurrency(sum.member.monthlyIncome)}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between text-slate-400 pt-1 border-t border-slate-800">
                       <span className="flex items-center gap-1">
                         <CreditCardIcon className="w-3.5 h-3.5 text-violet-400" />
                         Cota em Faturas de Cartão:
@@ -490,7 +442,10 @@ export const SharedView: React.FC<SharedViewProps> = ({
                     </div>
 
                     <div className="flex justify-between text-slate-400">
-                      <span>Cota em Contas Diretas (Pix/À vista):</span>
+                      <span className="flex items-center gap-1">
+                        <Receipt className="w-3.5 h-3.5 text-emerald-400" />
+                        Cota Fora do Cartão (Boletos/Pix):
+                      </span>
                       <span className="text-slate-200 font-medium">
                         {formatCurrency(sum.directResponsibility)}
                       </span>

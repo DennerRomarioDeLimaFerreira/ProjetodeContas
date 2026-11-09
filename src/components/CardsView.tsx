@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import {
   CheckCircle2,
+  Clock,
   CreditCard as CreditCardIcon,
   Edit2,
   Layers,
   Plus,
+  Receipt,
   Repeat,
   Trash2,
   Users,
@@ -30,6 +32,10 @@ interface CardsViewProps {
   onDeleteCard: (cardId: string) => void;
   onPayCardInvoice: (cardId: string, month: string) => void;
   onOpenNewTransactionWithCard: (cardId: string) => void;
+  onTogglePaid?: (txId: string) => void;
+  onEditTransaction?: (tx: Transaction) => void;
+  onDeleteTransaction?: (tx: Transaction, deleteGroup: boolean) => void;
+  onOpenNewDirectExpense?: () => void;
 }
 
 export const CardsView: React.FC<CardsViewProps> = ({
@@ -44,7 +50,12 @@ export const CardsView: React.FC<CardsViewProps> = ({
   onDeleteCard,
   onPayCardInvoice,
   onOpenNewTransactionWithCard,
+  onTogglePaid,
+  onEditTransaction,
+  onDeleteTransaction,
+  onOpenNewDirectExpense,
 }) => {
+  const [activeSection, setActiveSection] = useState<'cards' | 'direct'>('cards');
   const [selectedCardId, setSelectedCardId] = useState<string | 'all'>('all');
   const [showNewCardModal, setShowNewCardModal] = useState(false);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
@@ -151,6 +162,21 @@ export const CardsView: React.FC<CardsViewProps> = ({
     (t) => t.isRecurring && (t.installmentTotal || 1) === 1
   );
 
+  const directTransactions = monthTransactions.filter(
+    (t) => t.type === 'expense' && t.paymentMethod !== 'credit_card'
+  );
+  const totalDirectAmount = directTransactions.reduce(
+    (acc, t) => acc + t.amount,
+    0
+  );
+  const directPaidTxs = directTransactions.filter((t) => t.isPaid);
+  const totalDirectPaid = directPaidTxs.reduce((acc, t) => acc + t.amount, 0);
+  const directPendingTxs = directTransactions.filter((t) => !t.isPaid);
+  const totalDirectPending = directPendingTxs.reduce(
+    (acc, t) => acc + t.amount,
+    0
+  );
+
   const handleCreateCard = (e: React.FormEvent) => {
     e.preventDefault();
     if (!cardName.trim()) return;
@@ -178,27 +204,67 @@ export const CardsView: React.FC<CardsViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Cabeçalho da Aba */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <CreditCardIcon className="w-5 h-5 text-violet-400" />
-            Cartões de Crédito, Faturas & Parcelamentos
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Controle o limite comprometido pelas parcelas futuras, dia de fechamento e faturas de{' '}
-            <strong className="text-slate-200">{formatMonthLabel(selectedMonth)}</strong>
-          </p>
+      {/* Seletor de Visão: Cartões de Crédito vs Contas Fora do Cartão */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-1.5 bg-slate-900/90 border border-slate-800 rounded-2xl">
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setActiveSection('cards')}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+              activeSection === 'cards'
+                ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/25'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <CreditCardIcon className="w-4 h-4" />
+            Cartões de Crédito ({cards.length})
+          </button>
+          <button
+            onClick={() => setActiveSection('direct')}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+              activeSection === 'direct'
+                ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/25'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Receipt className="w-4 h-4" />
+            Contas Fora do Cartão & Boletos ({directTransactions.length})
+          </button>
         </div>
 
-        <button
-          onClick={openNewCardModal}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold shadow-lg shadow-violet-600/20 transition"
-        >
-          <Plus className="w-4 h-4" />
-          Novo Cartão de Crédito
-        </button>
+        {activeSection === 'cards' ? (
+          <button
+            onClick={openNewCardModal}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold shadow-lg shadow-violet-600/20 transition self-end sm:self-auto"
+          >
+            <Plus className="w-4 h-4" />
+            Novo Cartão
+          </button>
+        ) : (
+          <button
+            onClick={onOpenNewDirectExpense}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold shadow-lg shadow-emerald-500/20 transition self-end sm:self-auto"
+          >
+            <Plus className="w-4 h-4" />
+            + Nova Conta / Boleto
+          </button>
+        )}
       </div>
+
+      {/* SEÇÃO 1: CARTÕES DE CRÉDITO */}
+      {activeSection === 'cards' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <CreditCardIcon className="w-5 h-5 text-violet-400" />
+                Cartões de Crédito, Faturas & Parcelamentos
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Controle o limite comprometido pelas parcelas futuras, dia de fechamento e faturas de{' '}
+                <strong className="text-slate-200">{formatMonthLabel(selectedMonth)}</strong>
+              </p>
+            </div>
+          </div>
 
       {/* Grid de Cartões Visuais */}
       {cardStats.length === 0 ? (
@@ -640,6 +706,215 @@ export const CardsView: React.FC<CardsViewProps> = ({
           </div>
         </div>
       </div>
+    </div>
+  )}
+
+      {/* SEÇÃO 2: CONTAS FORA DO CARTÃO & BOLETOS */}
+      {activeSection === 'direct' && (
+        <div className="space-y-6">
+          {/* Cabeçalho */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-emerald-400" />
+                Contas Fixas, Boletos & Despesas Fora do Cartão
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Controle contas de água, luz, aluguel, condomínio, boletos bancários e transferências Pix de{' '}
+                <strong className="text-slate-200">{formatMonthLabel(selectedMonth)}</strong>
+              </p>
+            </div>
+          </div>
+
+          {/* 3 Cards de KPI */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4">
+              <span className="text-xs text-slate-400">Total Fora do Cartão</span>
+              <div className="text-xl font-bold text-white mt-1">
+                {formatCurrency(totalDirectAmount)}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                {directTransactions.length} contas cadastradas neste mês
+              </div>
+            </div>
+
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4">
+              <span className="text-xs text-slate-400 flex items-center gap-1.5 text-emerald-400">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Total Já Pago
+              </span>
+              <div className="text-xl font-bold text-emerald-300 mt-1">
+                {formatCurrency(totalDirectPaid)}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                {directPaidTxs.length} contas liquidadas
+              </div>
+            </div>
+
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4">
+              <span className="text-xs text-slate-400 flex items-center gap-1.5 text-amber-400">
+                <Clock className="w-3.5 h-3.5" /> Pendente de Pagamento
+              </span>
+              <div className="text-xl font-bold text-amber-300 mt-1">
+                {formatCurrency(totalDirectPending)}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                {directPendingTxs.length} contas a vencer / pendentes
+              </div>
+            </div>
+          </div>
+
+          {/* Lista de Contas */}
+          {directTransactions.length === 0 ? (
+            <div className="bg-slate-900/90 border border-dashed border-slate-700 rounded-2xl p-8 text-center space-y-3">
+              <Receipt className="w-8 h-8 text-emerald-400 mx-auto" />
+              <div>
+                <h3 className="text-sm font-bold text-white">
+                  Nenhuma conta fora do cartão cadastrada para este mês
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Cadastre contas como Aluguel, Luz, Água, Condomínio, Boletos ou Pix de {formatMonthLabel(selectedMonth)}.
+                </p>
+              </div>
+              {onOpenNewDirectExpense && (
+                <button
+                  onClick={onOpenNewDirectExpense}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-emerald-500/20"
+                >
+                  <Plus className="w-4 h-4" />
+                  Cadastrar Primeira Conta ou Boleto
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800/80">
+              <div className="px-5 py-3 bg-slate-950/60 flex items-center justify-between text-xs font-semibold text-slate-400">
+                <span>Contas & Boletos ({directTransactions.length})</span>
+                <span>Valor & Responsáveis</span>
+              </div>
+              {directTransactions.map((tx) => {
+                const cat = categoryMap[tx.categoryId];
+                const payer = memberMap[tx.paidById];
+                const beneficiary = memberMap[tx.beneficiaryId || tx.paidById];
+                const isIndividual = tx.splitType === 'individual';
+
+                return (
+                  <div
+                    key={tx.id}
+                    className="p-4 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-800/40 transition"
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Botão de Toggle Pago / Pendente */}
+                      <button
+                        onClick={() => onTogglePaid && onTogglePaid(tx.id)}
+                        title={tx.isPaid ? 'Marcar como Pendente' : 'Marcar como Pago'}
+                        className={`mt-0.5 p-1 rounded-lg transition ${
+                          tx.isPaid
+                            ? 'text-emerald-400 hover:text-emerald-300 bg-emerald-500/10'
+                            : 'text-amber-400 hover:text-amber-300 bg-amber-500/10'
+                        }`}
+                      >
+                        {tx.isPaid ? (
+                          <CheckCircle2 className="w-5 h-5" />
+                        ) : (
+                          <Clock className="w-5 h-5" />
+                        )}
+                      </button>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-white">
+                            {tx.description}
+                          </span>
+                          {cat && (
+                            <span
+                              className="px-2 py-0.5 rounded-md text-[10px] font-semibold"
+                              style={{
+                                backgroundColor: `${cat.color}20`,
+                                color: cat.color,
+                              }}
+                            >
+                              {cat.name}
+                            </span>
+                          )}
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-800 text-slate-300 uppercase">
+                            {tx.paymentMethod === 'boleto'
+                              ? 'Boleto'
+                              : tx.paymentMethod === 'pix'
+                              ? 'Pix'
+                              : tx.paymentMethod === 'debit'
+                              ? 'Débito'
+                              : 'Dinheiro'}
+                          </span>
+                          {tx.isRecurring && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-500/15 text-blue-300 flex items-center gap-1">
+                              <Repeat className="w-3 h-3" /> Recorrente
+                            </span>
+                          )}
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                              tx.isPaid
+                                ? 'bg-emerald-500/15 text-emerald-400'
+                                : 'bg-amber-500/15 text-amber-400'
+                            }`}
+                          >
+                            {tx.isPaid ? 'Pago' : 'Pendente'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
+                          <span>Data: {tx.date}</span>
+                          <span>•</span>
+                          <span>
+                            Pago por: <strong className="text-slate-200">{payer?.name || 'N/A'}</strong>
+                          </span>
+                          <span>•</span>
+                          <span>
+                            Divisão:{' '}
+                            <strong className="text-emerald-400">
+                              {isIndividual
+                                ? `100% de ${beneficiary?.name || 'N/A'}`
+                                : SPLIT_TYPE_LABELS[tx.splitType] || 'Compartilhado'}
+                            </strong>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                      <div className="text-right">
+                        <div className="text-base font-bold text-white">
+                          {formatCurrency(tx.amount)}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        {onEditTransaction && (
+                          <button
+                            onClick={() => onEditTransaction(tx)}
+                            title="Editar lançamento"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {onDeleteTransaction && (
+                          <button
+                            onClick={() => onDeleteTransaction(tx, false)}
+                            title="Excluir lançamento"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modal de Novo / Alterar Cartão */}
       {showNewCardModal && (

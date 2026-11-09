@@ -3,10 +3,12 @@ import {
   AlertTriangle,
   ArrowDownRight,
   ArrowRight,
-  ArrowUpRight,
+  CheckCircle2,
+  Clock,
   CreditCard as CreditCardIcon,
   Layers,
   PieChart,
+  Receipt,
   TrendingUp,
   Users,
   Wallet,
@@ -48,23 +50,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigateTab,
   onSelectMonth,
 }) => {
-  const monthIncomes = transactions
-    .filter((t) => t.type === 'income')
-    .reduce((acc, t) => acc + t.amount, 0);
-
-  const combinedRegisteredIncome = members.reduce(
-    (acc, m) => acc + (m.monthlyIncome || 0),
-    0
-  );
-
-  const effectiveIncome = monthIncomes > 0 ? monthIncomes : combinedRegisteredIncome;
-
   const monthExpenses = transactions.filter((t) => t.type === 'expense');
   const totalExpenses = monthExpenses.reduce((acc, t) => acc + t.amount, 0);
 
   const cardExpenses = monthExpenses
     .filter((t) => t.paymentMethod === 'credit_card')
     .reduce((acc, t) => acc + t.amount, 0);
+
+  const directExpenses = monthExpenses.filter(
+    (t) => t.paymentMethod !== 'credit_card'
+  );
+  const totalDirectExpenses = directExpenses.reduce(
+    (acc, t) => acc + t.amount,
+    0
+  );
+  const directPaidCount = directExpenses.filter((t) => t.isPaid).length;
+  const directPendingCount = directExpenses.length - directPaidCount;
 
   const installmentExpenses = monthExpenses
     .filter((t) => (t.installmentTotal || 1) > 1)
@@ -84,8 +85,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     monthSettlements,
     cards
   );
-
-  const balance = effectiveIncome - totalExpenses;
 
   // Dados por Categoria (incluindo fallback seguro para lançamentos cuja categoria foi removida)
   const knownExpenseCatIds = new Set(
@@ -169,7 +168,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const maxTimelineTotal = Math.max(
     ...timelineStats.map((s) => s.total),
-    effectiveIncome * 0.6,
     1000
   );
 
@@ -229,47 +227,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* 4 Cards Principais */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Receitas & Saldo */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-400">
-              Receita Familiar / Mensal
-            </span>
-            <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400">
-              <ArrowUpRight className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="my-3">
-            <div className="text-2xl font-bold text-white">
-              {formatCurrency(effectiveIncome)}
-            </div>
-            <div className="text-xs text-slate-400 mt-1 flex items-center justify-between">
-              <span>Saldo livre do mês:</span>
-              <span
-                className={`font-semibold ${
-                  balance >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                }`}
-              >
-                {formatCurrency(balance)}
-              </span>
-            </div>
-          </div>
-          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full ${
-                totalExpenses > effectiveIncome ? 'bg-rose-500' : 'bg-emerald-500'
-              }`}
-              style={{
-                width: `${Math.min(
-                  100,
-                  effectiveIncome > 0 ? (totalExpenses / effectiveIncome) * 100 : 0
-                )}%`,
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Card 2: Despesas Totais */}
+        {/* Card 1: Despesas Totais do Mês */}
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-slate-400">
@@ -284,12 +242,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {formatCurrency(totalExpenses)}
             </div>
             <div className="text-xs text-slate-400 mt-1 flex items-center justify-between">
-              <span>Comprometimento da renda:</span>
-              <span className="font-semibold text-slate-200">
-                {effectiveIncome > 0
-                  ? `${((totalExpenses / effectiveIncome) * 100).toFixed(2)}%`
-                  : '0%'}
-              </span>
+              <span>Cartões: {formatCurrency(cardExpenses)}</span>
+              <span>Fora: {formatCurrency(totalDirectExpenses)}</span>
             </div>
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
@@ -298,7 +252,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Card 3: Cartões & Parcelas */}
+        {/* Card 2: Faturas de Cartão no Mês */}
         <div
           onClick={() => onNavigateTab('cards')}
           className="bg-slate-900/90 border border-slate-800 hover:border-violet-500/40 cursor-pointer rounded-2xl p-5 flex flex-col justify-between transition group"
@@ -328,6 +282,40 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span>{cards.length} cartões ativos</span>
             <span className="flex items-center gap-1">
               Ver faturas <ArrowRight className="w-3 h-3" />
+            </span>
+          </div>
+        </div>
+
+        {/* Card 3: Contas Fora do Cartão & Boletos */}
+        <div
+          onClick={() => onNavigateTab('cards')}
+          className="bg-slate-900/90 border border-slate-800 hover:border-emerald-500/40 cursor-pointer rounded-2xl p-5 flex flex-col justify-between transition group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-400 group-hover:text-emerald-300 transition">
+              Contas Fora do Cartão & Boletos
+            </span>
+            <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400">
+              <Receipt className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="my-3">
+            <div className="text-2xl font-bold text-white">
+              {formatCurrency(totalDirectExpenses)}
+            </div>
+            <div className="text-xs text-slate-400 mt-1 flex items-center justify-between">
+              <span className="flex items-center gap-1 text-emerald-400">
+                <CheckCircle2 className="w-3.5 h-3.5" /> {directPaidCount} pagas
+              </span>
+              <span className="flex items-center gap-1 text-amber-400">
+                <Clock className="w-3.5 h-3.5" /> {directPendingCount} pendentes
+              </span>
+            </div>
+          </div>
+          <div className="text-[11px] text-emerald-400 font-medium flex items-center justify-between pt-1 border-t border-slate-800/80">
+            <span>{directExpenses.length} contas no mês</span>
+            <span className="flex items-center gap-1">
+              Ver contas <ArrowRight className="w-3 h-3" />
             </span>
           </div>
         </div>
