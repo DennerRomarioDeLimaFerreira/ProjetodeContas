@@ -110,12 +110,33 @@ export async function loadCloudFinanceState(
 
 /**
  * Salva os dados financeiros na nuvem para o store correspondente ao usuário.
+ * Possui Trava de Segurança Anti-Zeramento (Anti-Wipe Guard) para proteger dados do ROOT.
  */
 export async function saveCloudFinanceState(
   state: FinanceState,
-  storeKey: string = ROOT_STORE_KEY
+  storeKey: string = ROOT_STORE_KEY,
+  forceAllowWipe = false
 ): Promise<string> {
   await ensureDatabaseTables();
+
+  // Trava de segurança anti-zeramento acidental para a base do ROOT
+  if (
+    storeKey === ROOT_STORE_KEY &&
+    (!state.transactions || state.transactions.length === 0) &&
+    !forceAllowWipe
+  ) {
+    const existing = await sql`
+      SELECT state_json FROM duofinance_cloud_store WHERE id = ${storeKey} LIMIT 1
+    `;
+    const existingCount = existing?.[0]?.state_json?.transactions?.length || 0;
+    if (existingCount > 0) {
+      console.warn(
+        `[SEGURANÇA] Bloqueada tentativa de sobrescrever ${existingCount} lançamentos históricos do ROOT com estado vazio!`
+      );
+      return new Date().toISOString();
+    }
+  }
+
   const payload = JSON.stringify(state);
   const rows = await sql`
     INSERT INTO duofinance_cloud_store (id, state_json, updated_at)
