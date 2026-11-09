@@ -1,5 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AuthModal } from './components/AuthModal';
+import { UsersManagementModal } from './components/UsersManagementModal';
+import { AuthSession } from './types/auth';
 import {
+  clearCurrentSession,
+  getCurrentSession,
+  getStoreKeyForUser,
+} from './utils/authService';
+import {
+  LogOut,
   ChevronLeft,
   ChevronRight,
   Cloud,
@@ -58,6 +67,11 @@ const LGPD_CONSENT_KEY = 'duofinance_lgpd_consent_v1';
 type ActiveTab = 'dashboard' | 'transactions' | 'cards' | 'shared' | 'budgets';
 
 export function App() {
+  const [session, setSession] = useState<AuthSession | null>(() =>
+    getCurrentSession()
+  );
+  const [isUsersModalOpen, setIsUsersModalOpen] = useState(false);
+
   const [state, setState] = useState<FinanceState>(() => {
     try {
       localStorage.removeItem('duofinance_state_v1');
@@ -109,7 +123,8 @@ export function App() {
   const syncFromCloud = async () => {
     try {
       setCloudStatus('connecting');
-      const { state: remoteState } = await loadCloudFinanceState();
+      const currentStoreKey = getStoreKeyForUser(session?.user || null);
+      const { state: remoteState } = await loadCloudFinanceState(currentStoreKey);
       const localHasData =
         state.transactions.length > 0 || state.cards.length > 0;
       const remoteHasData =
@@ -120,7 +135,7 @@ export function App() {
         skipNextCloudSave.current = true;
         setState(remoteState);
       } else {
-        await saveCloudFinanceState(state);
+        await saveCloudFinanceState(state, currentStoreKey);
       }
       isInitialCloudLoadDone.current = true;
       setCloudStatus('synced');
@@ -132,9 +147,12 @@ export function App() {
   };
 
   useEffect(() => {
-    syncFromCloud();
+    if (session) {
+      isInitialCloudLoadDone.current = false;
+      syncFromCloud();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [session?.user?.id]);
 
   useEffect(() => {
     try {
@@ -152,7 +170,8 @@ export function App() {
     const timer = setTimeout(async () => {
       try {
         setCloudStatus('saving');
-        await saveCloudFinanceState(state);
+        const currentStoreKey = getStoreKeyForUser(session?.user || null);
+        await saveCloudFinanceState(state, currentStoreKey);
         setCloudStatus('synced');
       } catch (err) {
         console.error('Erro ao salvar estado no Neon Cloud DB:', err);
@@ -485,6 +504,12 @@ export function App() {
     });
   };
 
+  const handleLogout = () => {
+    clearCurrentSession();
+    setSession(null);
+    setState(createInitialFinanceState());
+  };
+
   const handleResetDemo = () => {
     setDeleteCardsOnReset(false);
     setResetCategoriesAndMembers(false);
@@ -504,6 +529,16 @@ export function App() {
     setSelectedMonth(getCurrentYearMonth());
     setIsResetModalOpen(false);
   };
+
+  if (!session) {
+    return (
+      <AuthModal
+        onLoginSuccess={(newSession) => {
+          setSession(newSession);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
@@ -623,6 +658,51 @@ export function App() {
               <Plus className="w-4 h-4 stroke-[2.5]" />
               <span>Novo Gasto</span>
             </button>
+
+            {/* Perfil do Usuário Logado & Logout */}
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-xs font-bold text-emerald-400">
+                  {session.user.name.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="hidden xl:block text-left">
+                  <div className="text-xs font-semibold text-white truncate max-w-[120px]">
+                    {session.user.name.split(' ')[0]}
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    <span
+                      className={`px-1.5 py-0.2 rounded font-bold ${
+                        session.user.role === 'ROOT'
+                          ? 'text-amber-300 bg-amber-500/20 border border-amber-500/30'
+                          : 'text-slate-300 bg-slate-800'
+                      }`}
+                    >
+                      {session.user.role}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {session.user.role === 'ROOT' && (
+                <button
+                  type="button"
+                  onClick={() => setIsUsersModalOpen(true)}
+                  title="Gerenciar Usuários (Painel ROOT)"
+                  className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-400 hover:text-amber-300 transition"
+                >
+                  <Users className="w-4 h-4" />
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                title="Sair da Conta (Logout)"
+                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-rose-400 transition"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1000,6 +1080,13 @@ export function App() {
           </div>
         </div>
       )}
+
+      {/* Modal de Gestão de Usuários (Painel ROOT) */}
+      <UsersManagementModal
+        isOpen={isUsersModalOpen}
+        onClose={() => setIsUsersModalOpen(false)}
+        currentUser={session.user}
+      />
 
       <LgpdConsentModal
         isOpen={isLgpdModalOpen}

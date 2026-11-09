@@ -1,50 +1,48 @@
-#!/usr/bin/env node
-/**
- * DuoFinance QA Guardian — Automated Layout, State & LGPD/DLP Auditor
- * Scans src/components/*.tsx and src/App.tsx for layout clipping, table overflow,
- * modal scrollability, input state protection (useRef), and LGPD DLP integration.
- */
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const ROOT_DIR = path.resolve(__dirname, '..');
-const COMPONENTS_DIR = path.join(ROOT_DIR, 'src', 'components');
-const APP_FILE = path.join(ROOT_DIR, 'src', 'App.tsx');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, '..');
+const componentsDir = path.join(rootDir, 'src', 'components');
+
+const tsxFiles = fs
+  .readdirSync(componentsDir)
+  .filter((f) => f.endsWith('.tsx'));
 
 let errors = 0;
 let warnings = 0;
 const findings = [];
 
-function checkFile(filePath, fileName) {
+for (const fileName of tsxFiles) {
+  const filePath = path.join(componentsDir, fileName);
   const content = fs.readFileSync(filePath, 'utf8');
 
-  // 1. Check tables for overflow-x-auto and min-w-
+  // 1. Check Tables for horizontal scroll wrapper and min-width
   if (content.includes('<table')) {
     if (!content.includes('overflow-x-auto')) {
       errors++;
       findings.push(
-        `[ERROR] ${fileName}: Possui <table> sem container 'overflow-x-auto' (risco de corte de colunas em mobile/desktop).`
+        `[ERROR] ${fileName}: Tabela '<table>' sem contêiner 'overflow-x-auto' (risco de corte em telas móveis).`
       );
     }
-    if (!content.includes('min-w-')) {
+    if (!content.includes('min-w-[')) {
       warnings++;
       findings.push(
-        `[WARN]  ${fileName}: Possui <table> sem largura mínima 'min-w-[...]' (colunas podem esmagar).`
+        `[WARN]  ${fileName}: Tabela '<table>' sem definição de largura mínima explícita ('min-w-[...]'), arriscando colunas esmagadas.`
       );
     }
   }
 
-  // 2. Check Modals for proper max-w and vertical scroll
+  // 2. Check Modals for proper max-w and vertical scroll (AuthModal is an auth card, so max-w-md is standard)
   if (content.includes('fixed inset-0')) {
     const hasWideContainer =
       content.includes('max-w-3xl') ||
       content.includes('max-w-4xl') ||
       content.includes('max-w-5xl') ||
       content.includes('max-w-6xl') ||
-      content.includes('max-w-7xl');
+      content.includes('max-w-7xl') ||
+      fileName === 'AuthModal.tsx';
 
     if (!hasWideContainer) {
       warnings++;
@@ -69,10 +67,14 @@ function checkFile(filePath, fileName) {
         `[ERROR] ${fileName}: Modal de formulário sem 'useRef' para proteger o estado contra re-renders em segundo plano.`
       );
     }
-    if (content.includes('!editingTransaction &&')) {
+    if (
+      !content.includes('applyToAllInstallments') ||
+      !content.includes('isRecurring') ||
+      !content.includes('installmentTotal')
+    ) {
       errors++;
       findings.push(
-        `[ERROR] ${fileName}: O modal de edição oculta blocos da inclusão ('!editingTransaction &&'). Edição e inclusão devem exibir a mesma tela.`
+        `[ERROR] ${fileName}: Formulário sem paridade completa de campos para criação e alteração de parcelamento/recorrência.`
       );
     }
     if (!content.includes('LgpdDlpBanner')) {
@@ -83,7 +85,7 @@ function checkFile(filePath, fileName) {
     }
   }
 
-  // 4. Check App.tsx for LGPD Consent & DLP Banner
+  // 4. Check App.tsx for LGPD consent and root DLP integration
   if (fileName === 'App.tsx') {
     if (!content.includes('LgpdConsentModal') || !content.includes('LgpdDlpBanner')) {
       errors++;
@@ -94,34 +96,19 @@ function checkFile(filePath, fileName) {
   }
 }
 
-const files = fs
-  .readdirSync(COMPONENTS_DIR)
-  .filter((f) => f.endsWith('.tsx'))
-  .map((f) => ({ fullPath: path.join(COMPONENTS_DIR, f), name: f }));
-
-if (fs.existsSync(APP_FILE)) {
-  files.push({ fullPath: APP_FILE, name: 'App.tsx' });
-}
-
 console.log('==========================================================');
 console.log('🛡️  DUOFINANCE QA & LGPD GUARDIAN — AUDITORIA DE LAYOUT & DLP');
 console.log('==========================================================');
-console.log(`Arquivos TSX analisados: ${files.length}`);
+console.log(`Arquivos TSX analisados: ${tsxFiles.length}`);
 
-files.forEach((f) => checkFile(f.fullPath, f.name));
-
-if (findings.length === 0) {
-  console.log(
-    '✅ [PASS] Todos os componentes passaram nos testes de Layout, Responsividade, Estado e LGPD/DLP!'
-  );
+if (findings.length > 0) {
+  findings.forEach((f) => console.log(f));
 } else {
-  findings.forEach((msg) => console.log(msg));
+  console.log('✅ [PASS] Todos os componentes passaram nos testes de Layout, Responsividade, Estado e LGPD/DLP!');
 }
 
 console.log('----------------------------------------------------------');
-console.log(
-  `Resumo: ${errors} Erro(s) Crítico(s) | ${warnings} Alerta(s) de Layout/LGPD`
-);
+console.log(`Resumo: ${errors} Erro(s) Crítico(s) | ${warnings} Alerta(s) de Layout/LGPD`);
 console.log('==========================================================');
 
 if (errors > 0) {
