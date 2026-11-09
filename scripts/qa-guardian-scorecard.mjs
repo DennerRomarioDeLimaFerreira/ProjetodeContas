@@ -75,6 +75,12 @@ runStep('5. Build de Produção (Vite)', 'npx.cmd vite build', (output) => {
   return 'Build minificado gerado com sucesso';
 });
 
+// 6. Testes E2E com Simulação Humana Real (Playwright Desktop & Mobile)
+runStep('6. E2E Simulação Humana (Playwright)', 'npx.cmd playwright test', (output) => {
+  const match = output.match(/([0-9]+\s+passed)/);
+  return match ? `${match[1]} (Desktop & Mobile Pixel 7)` : 'Navegação e Isolamento E2E validados';
+});
+
 console.log('\n================================================================================');
 console.log('📋 SCORECARD CONSOLIDADO DO QA GUARDIAN');
 console.log('================================================================================\n');

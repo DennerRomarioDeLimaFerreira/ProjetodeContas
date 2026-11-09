@@ -666,7 +666,7 @@ export function App() {
           </div>
 
           {/* Ações Rápidas */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => syncFromCloud()}
               title="Sincronizado com banco de dados na nuvem (Neon PostgreSQL) — clique para atualizar"
@@ -725,16 +725,17 @@ export function App() {
                 setPreselectedCardId(null);
                 setIsTxModalOpen(true);
               }}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold shadow-lg shadow-emerald-500/20 transition"
+              title="Novo Gasto"
+              className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold shadow-lg shadow-emerald-500/20 transition shrink-0"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
               <span>Novo Gasto</span>
             </button>
 
             {/* Perfil do Usuário Logado & Logout */}
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-800 shrink-0">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-xs font-bold text-emerald-400">
+                <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-xs font-bold text-emerald-400 shrink-0">
                   {session.user.name.slice(0, 2).toUpperCase()}
                 </div>
                 <div className="hidden xl:block text-left">
@@ -760,7 +761,7 @@ export function App() {
                   type="button"
                   onClick={() => setIsUsersModalOpen(true)}
                   title="Gerenciar Usuários (Painel ROOT)"
-                  className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-400 hover:text-amber-300 transition"
+                  className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-400 hover:text-amber-300 transition shrink-0"
                 >
                   <Users className="w-4 h-4" />
                 </button>
@@ -770,7 +771,7 @@ export function App() {
                 type="button"
                 onClick={handleLogout}
                 title="Sair da Conta (Logout)"
-                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-rose-400 transition"
+                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-rose-400 transition shrink-0"
               >
                 <LogOut className="w-4 h-4" />
               </button>

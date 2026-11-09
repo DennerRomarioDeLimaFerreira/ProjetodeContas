@@ -8,6 +8,7 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "qa:layout": "node scripts/qa-layout-audit.mjs",
     "qa:scorecard": "node scripts/qa-guardian-scorecard.mjs",
     "qa:check": "node scripts/qa-guardian-scorecard.mjs",
@@ -26,6 +27,7 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
