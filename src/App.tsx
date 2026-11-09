@@ -6,6 +6,7 @@ import {
   clearCurrentSession,
   getCurrentSession,
   getStoreKeyForUser,
+  getUserLocalStorageStateKey,
 } from './utils/authService';
 import {
   LogOut,
@@ -61,7 +62,6 @@ import {
 } from './utils/financeUtils';
 import { detectPII } from './utils/lgpd';
 
-const STORAGE_KEY = 'duofinance_state_real_v1';
 const LGPD_CONSENT_KEY = 'duofinance_lgpd_consent_v1';
 
 type ActiveTab = 'dashboard' | 'transactions' | 'cards' | 'shared' | 'budgets';
@@ -72,10 +72,12 @@ export function App() {
   );
   const [isUsersModalOpen, setIsUsersModalOpen] = useState(false);
 
-  const [state, setState] = useState<FinanceState>(() => {
+  // Carrega estado seguro e estritamente isolado para o usuário da sessão
+  const loadStateForSession = (currentSession: AuthSession | null): FinanceState => {
     try {
-      localStorage.removeItem('duofinance_state_v1');
-      const saved = localStorage.getItem(STORAGE_KEY);
+      if (!currentSession) return createInitialFinanceState();
+      const userKey = getUserLocalStorageStateKey(currentSession.user);
+      const saved = localStorage.getItem(userKey);
       if (saved) {
         const parsed = JSON.parse(saved) as FinanceState;
         if (parsed.members && parsed.categories && parsed.transactions) {
@@ -86,7 +88,11 @@ export function App() {
       console.error('Erro ao carregar dados do LocalStorage:', e);
     }
     return createInitialFinanceState();
-  });
+  };
+
+  const [state, setState] = useState<FinanceState>(() =>
+    loadStateForSession(session)
+  );
 
   const [selectedMonth, setSelectedMonth] = useState<string>(
     getCurrentYearMonth()
@@ -120,22 +126,37 @@ export function App() {
   const isInitialCloudLoadDone = useRef(false);
   const skipNextCloudSave = useRef(false);
 
-  const syncFromCloud = async () => {
+  const syncFromCloud = async (activeSession?: AuthSession | null) => {
+    const currentSession = activeSession !== undefined ? activeSession : session;
+    if (!currentSession) return;
     try {
       setCloudStatus('connecting');
-      const currentStoreKey = getStoreKeyForUser(session?.user || null);
+      const currentStoreKey = getStoreKeyForUser(currentSession.user);
       const { state: remoteState } = await loadCloudFinanceState(currentStoreKey);
-      const localHasData =
-        state.transactions.length > 0 || state.cards.length > 0;
-      const remoteHasData =
-        remoteState &&
-        (remoteState.transactions?.length > 0 || remoteState.cards?.length > 0);
 
-      if (remoteState && (remoteHasData || !localHasData)) {
+      if (remoteState) {
+        // Nuvem já possui estado para este usuário específico -> carrega na tela
         skipNextCloudSave.current = true;
         setState(remoteState);
+        const userKey = getUserLocalStorageStateKey(currentSession.user);
+        try {
+          localStorage.setItem(userKey, JSON.stringify(remoteState));
+        } catch {
+          // ignore
+        }
       } else {
-        await saveCloudFinanceState(state, currentStoreKey);
+        // Usuário novo não possui store na nuvem ainda.
+        // Garante que o usuário novo SEMPRE inicie com estado limpo (sem herdar dados alheios)!
+        const initialClean = createInitialFinanceState(currentSession.user.name.split(' ')[0]);
+        skipNextCloudSave.current = true;
+        setState(initialClean);
+        await saveCloudFinanceState(initialClean, currentStoreKey);
+        const userKey = getUserLocalStorageStateKey(currentSession.user);
+        try {
+          localStorage.setItem(userKey, JSON.stringify(initialClean));
+        } catch {
+          // ignore
+        }
       }
       isInitialCloudLoadDone.current = true;
       setCloudStatus('synced');
@@ -149,14 +170,20 @@ export function App() {
   useEffect(() => {
     if (session) {
       isInitialCloudLoadDone.current = false;
-      syncFromCloud();
+      skipNextCloudSave.current = true;
+      setState(loadStateForSession(session));
+      syncFromCloud(session);
+    } else {
+      setState(createInitialFinanceState());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id]);
 
   useEffect(() => {
+    if (!session) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const userKey = getUserLocalStorageStateKey(session.user);
+      localStorage.setItem(userKey, JSON.stringify(state));
     } catch (e) {
       console.error('Erro ao salvar no LocalStorage:', e);
     }
@@ -170,7 +197,7 @@ export function App() {
     const timer = setTimeout(async () => {
       try {
         setCloudStatus('saving');
-        const currentStoreKey = getStoreKeyForUser(session?.user || null);
+        const currentStoreKey = getStoreKeyForUser(session.user);
         await saveCloudFinanceState(state, currentStoreKey);
         setCloudStatus('synced');
       } catch (err) {
@@ -180,7 +207,7 @@ export function App() {
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [state]);
+  }, [state, session]);
 
   const monthTransactions = useMemo(
     () =>
@@ -535,6 +562,7 @@ export function App() {
       <AuthModal
         onLoginSuccess={(newSession) => {
           setSession(newSession);
+          setState(loadStateForSession(newSession));
         }}
       />
     );
@@ -596,7 +624,7 @@ export function App() {
           {/* Ações Rápidas */}
           <div className="flex items-center gap-2.5">
             <button
-              onClick={syncFromCloud}
+              onClick={() => syncFromCloud()}
               title="Sincronizado com banco de dados na nuvem (Neon PostgreSQL) — clique para atualizar"
               className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition ${
                 cloudStatus === 'synced'

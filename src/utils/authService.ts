@@ -60,6 +60,16 @@ export function getStoreKeyForUser(user: AuthUser | null): string {
   return `user_${user.id}`;
 }
 
+/**
+ * Retorna a chave do LocalStorage individual para o usuário logado.
+ * Evita vazamento de cache entre sessões no mesmo dispositivo/navegador.
+ */
+export function getUserLocalStorageStateKey(user: AuthUser | null): string {
+  if (!user) return 'duofinance_state_guest_v1';
+  if (user.role === 'ROOT') return 'duofinance_state_root_household_v1';
+  return `duofinance_state_user_${user.id}_v1`;
+}
+
 export async function loginUser(
   emailInput: string,
   passwordInput: string

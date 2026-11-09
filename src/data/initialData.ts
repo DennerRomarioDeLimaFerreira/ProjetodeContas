@@ -1,17 +1,17 @@
 import { Category, CreditCard, FinanceState, Member } from '../types/finance';
 
-export function createInitialFinanceState(): FinanceState {
+export function createInitialFinanceState(primaryUserName = 'Você'): FinanceState {
   const members: Member[] = [
     {
       id: 'm1',
-      name: 'Titular 1 (Você)',
+      name: `${primaryUserName}`,
       role: 'Membro Principal',
       avatarColor: '#10b981', // emerald
       monthlyIncome: 0,
     },
     {
       id: 'm2',
-      name: 'Titular 2 (Parceiro/a)',
+      name: 'Parceiro(a)',
       role: 'Co-participante',
       avatarColor: '#8b5cf6', // violet
       monthlyIncome: 0,

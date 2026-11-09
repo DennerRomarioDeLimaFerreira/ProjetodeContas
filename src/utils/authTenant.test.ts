@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getStoreKeyForUser } from './authService';
+import { getStoreKeyForUser, getUserLocalStorageStateKey } from './authService';
 import { ROOT_STORE_KEY } from './cloudSync';
 import type { AuthUser } from '../types/auth';
 
@@ -46,5 +46,31 @@ describe('Auth & Multi-Tenant Segregation — QA Tenant Isolation Gate', () => {
 
   it('deve aplicar fallback seguro para o store principal quando usuário não estiver autenticado', () => {
     expect(getStoreKeyForUser(null)).toBe(ROOT_STORE_KEY);
+  });
+
+  it('deve gerar chaves de LocalStorage estritamente isoladas por usuário evitando contaminação de cache local', () => {
+    const rootUser: AuthUser = {
+      id: 'root-id',
+      name: 'Denner',
+      email: 'denner@contas.local',
+      role: 'ROOT',
+      createdAt: '2026-05-01T00:00:00Z',
+    };
+
+    const ederUser: AuthUser = {
+      id: 'eder-uuid',
+      name: 'Eder',
+      email: 'eder@contas.com',
+      role: 'USER',
+      createdAt: '2026-05-01T00:00:00Z',
+    };
+
+    const rootKey = getUserLocalStorageStateKey(rootUser);
+    const ederKey = getUserLocalStorageStateKey(ederUser);
+
+    expect(rootKey).toBe('duofinance_state_root_household_v1');
+    expect(ederKey).toBe('duofinance_state_user_eder-uuid_v1');
+    expect(rootKey).not.toBe(ederKey);
+    expect(getUserLocalStorageStateKey(null)).toBe('duofinance_state_guest_v1');
   });
 });
