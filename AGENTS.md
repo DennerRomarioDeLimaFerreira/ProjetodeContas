@@ -45,3 +45,8 @@ Sempre que qualquer alteração for realizada no projeto, execute antes de concl
    - Varredura contra vazamento de credenciais, CVV e cartões completos.
    - Validação de isolamento de dados por usuário.
    - Proteção de dados sensíveis através de `src/utils/lgpd.ts` e `LgpdDlpBanner`.
+3. **Ergonomia e Design System (`ui-ux-artisan`):**
+   - Padrão Bottom Sheet em modais no mobile (`items-end sm:items-center rounded-t-3xl sm:rounded-2xl`).
+   - Teclados mobile inteligentes (`inputMode="decimal"` para valores monetários, `inputMode="numeric"` para parcelas).
+   - Prevenção de zoom forçado no iOS com tipografia `text-base sm:text-sm` em inputs.
+   - Touch targets mínimos de 44px e zona do polegar otimizada.

@@ -797,7 +797,7 @@ export function App() {
       </header>
 
       {/* Conteúdo Principal */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 pb-24 sm:pb-8">
         {activeTab === 'dashboard' && (
           <DashboardView
             selectedMonth={selectedMonth}
@@ -1080,6 +1080,46 @@ export function App() {
           </div>
         </div>
       )}
+
+      {/* Mobile Bottom Navigation Bar (Zona do Polegar) */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/80 px-3 py-1.5 flex items-center justify-around sm:hidden shadow-2xl safe-area-pb">
+        {[
+          { id: 'dashboard', label: 'Início', icon: LayoutDashboard },
+          { id: 'cards', label: 'Cartões', icon: CreditCardIcon },
+          { id: 'transactions', label: 'Extrato', icon: ListOrdered },
+          { id: 'shared', label: 'Divisão', icon: Users },
+          { id: 'budgets', label: 'Metas', icon: Target },
+        ].map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id as ActiveTab)}
+              className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition ${
+                isActive
+                  ? 'text-emerald-400 font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
+              <span className="text-[10px] mt-0.5">{item.label}</span>
+            </button>
+          );
+        })}
+        {/* Botão de Adição Rápida (+ Novo Gasto) ao alcance do polegar */}
+        <button
+          onClick={() => {
+            setEditingTx(null);
+            setPreselectedCardId(null);
+            setIsTxModalOpen(true);
+          }}
+          className="flex items-center justify-center w-10 h-10 rounded-full bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/30 active:scale-95 transition"
+          title="Novo Gasto"
+        >
+          <Plus className="w-5 h-5 stroke-[3]" />
+        </button>
+      </div>
 
       {/* Modal de Gestão de Usuários (Painel ROOT) */}
       <UsersManagementModal

@@ -557,8 +557,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden my-8">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden my-0 sm:my-8 max-h-[92vh] sm:max-h-none flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-200">
+        {/* Puxador tátil (Drag Handle) no mobile */}
+        <div className="w-12 h-1.5 bg-slate-700/80 rounded-full mx-auto my-2.5 sm:hidden shrink-0" />
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/80">
           <h2 className="text-lg font-semibold text-white">
             {editingTransaction
@@ -625,7 +627,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                   placeholder="Ex: Supermercado, TV Samsung, Jantar..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
                 />
               </div>
               <div>
@@ -680,11 +682,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 type="number"
                 step="0.01"
                 min="0.01"
+                inputMode="decimal"
                 required
                 placeholder="0,00"
                 value={amountInput}
                 onChange={(e) => setAmountInput(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-semibold focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-base sm:text-sm text-white font-semibold focus:outline-none focus:border-emerald-500"
               />
             </div>
 

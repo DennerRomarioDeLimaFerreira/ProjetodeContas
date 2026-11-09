@@ -156,8 +156,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 overflow-y-auto">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/80 backdrop-blur-md p-0 sm:p-4 overflow-y-auto">
+      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden my-0 sm:my-auto animate-in fade-in slide-in-from-bottom-4 duration-200">
+        {/* Puxador tátil no mobile */}
+        <div className="w-12 h-1.5 bg-slate-700/80 rounded-full mx-auto my-2.5 sm:hidden shrink-0" />
+
         {/* Cabeçalho Visual */}
         <div className="bg-gradient-to-r from-emerald-950/70 via-slate-900 to-slate-900 p-6 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -232,11 +235,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                 <input
                   type="email"
+                  inputMode="email"
+                  autoCapitalize="none"
                   required
                   placeholder="seu@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none transition"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2 text-base sm:text-sm text-white placeholder-slate-600 focus:outline-none transition"
                 />
               </div>
             </div>
@@ -262,7 +267,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-10 py-2 text-sm text-white placeholder-slate-600 focus:outline-none transition"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-10 py-2 text-base sm:text-sm text-white placeholder-slate-600 focus:outline-none transition"
                 />
                 <button
                   type="button"
@@ -337,11 +342,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                 <input
                   type="email"
+                  inputMode="email"
+                  autoCapitalize="none"
                   required
                   placeholder="seu@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none transition"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2 text-base sm:text-sm text-white placeholder-slate-600 focus:outline-none transition"
                 />
               </div>
             </div>
