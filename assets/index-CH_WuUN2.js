@@ -89,7 +89,9 @@ d to connect with these parameters, please set the host to 'localhost' explicitl
     FROM duofinance_cloud_store
     WHERE id = ${e}
     LIMIT 1
-  `;if(!t||t.length===0)return{state:null,updatedAt:null};let n=t[0];return{state:n.state_json,updatedAt:n.updated_at?String(n.updated_at):null}}async function q(e,t=Ji){await Xi();let n=await qi`
+  `;if(!t||t.length===0)return{state:null,updatedAt:null};let n=t[0];return{state:n.state_json,updatedAt:n.updated_at?String(n.updated_at):null}}async function q(e,t=Ji,n=!1){if(await Xi(),t===`main_household`&&(!e.transactions||e.transactions.length===0)&&!n){let e=(await qi`
+      SELECT state_json FROM duofinance_cloud_store WHERE id = ${t} LIMIT 1
+    `)?.[0]?.state_json?.transactions?.length||0;if(e>0)return console.warn(`[SEGURANÇA] Bloqueada tentativa de sobrescrever ${e} lançamentos históricos do ROOT com estado vazio!`),new Date().toISOString()}let r=await qi`
     INSERT INTO duofinance_cloud_store (id, state_json, updated_at)
     VALUES (${t}, ${JSON.stringify(e)}::jsonb, NOW())
     ON CONFLICT (id)
@@ -97,7 +99,7 @@ d to connect with these parameters, please set the host to 'localhost' explicitl
       state_json = EXCLUDED.state_json,
       updated_at = NOW()
     RETURNING updated_at
-  `;return n?.[0]?.updated_at?String(n[0].updated_at):new Date().toISOString()}var Qi=`duofinance_auth_session_v1`;function $i(){try{let e=localStorage.getItem(Qi);if(!e)return null;let t=JSON.parse(e);return new Date(t.expiresAt).getTime()<=Date.now()?(localStorage.removeItem(Qi),null):t}catch{return null}}function ea(e){try{localStorage.setItem(Qi,JSON.stringify(e))}catch(e){console.error(`Falha ao salvar sessão local:`,e)}}function ta(){try{localStorage.removeItem(Qi)}catch(e){console.error(`Falha ao limpar sessão:`,e)}}function na(e){return!e||e.role===`ROOT`?Ji:`user_${e.id}`}function ra(e){return e?e.role===`ROOT`?`duofinance_state_root_household_v1`:`duofinance_state_user_${e.id}_v1`:`duofinance_state_guest_v1`}async function ia(e,t){await Xi();let n=await qi`
+  `;return r?.[0]?.updated_at?String(r[0].updated_at):new Date().toISOString()}var Qi=`duofinance_auth_session_v1`;function $i(){try{let e=localStorage.getItem(Qi);if(!e)return null;let t=JSON.parse(e);return new Date(t.expiresAt).getTime()<=Date.now()?(localStorage.removeItem(Qi),null):t}catch{return null}}function ea(e){try{localStorage.setItem(Qi,JSON.stringify(e))}catch(e){console.error(`Falha ao salvar sessão local:`,e)}}function ta(){try{localStorage.removeItem(Qi)}catch(e){console.error(`Falha ao limpar sessão:`,e)}}function na(e){return!e||e.role===`ROOT`?Ji:`user_${e.id}`}function ra(e){return e?e.role===`ROOT`?`duofinance_state_root_household_v1`:`duofinance_state_user_${e.id}_v1`:`duofinance_state_guest_v1`}async function ia(e,t){await Xi();let n=await qi`
     SELECT id, name, email, password_hash, salt, security_question, role, created_at
     FROM duofinance_users
     WHERE LOWER(email) = ${e.trim().toLowerCase()}
