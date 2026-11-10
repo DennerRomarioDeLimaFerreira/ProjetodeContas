@@ -51,10 +51,11 @@ export function clearCurrentSession(): void {
 /**
  * Retorna a chave do store da nuvem para o usuário logado.
  * ROOT usa 'main_household' (base histórica).
- * Usuários comuns usam 'user_<userId>' (espaço isolado).
+ * Usuário vinculado a um membro da casa usa 'main_household' (para ler suas despesas).
+ * Usuários comuns independentes usam 'user_<userId>' (espaço isolado).
  */
 export function getStoreKeyForUser(user: AuthUser | null): string {
-  if (!user || user.role === 'ROOT') {
+  if (!user || user.role === 'ROOT' || Boolean(user.linkedMemberId)) {
     return ROOT_STORE_KEY;
   }
   return `user_${user.id}`;
@@ -67,6 +68,7 @@ export function getStoreKeyForUser(user: AuthUser | null): string {
 export function getUserLocalStorageStateKey(user: AuthUser | null): string {
   if (!user) return 'duofinance_state_guest_v1';
   if (user.role === 'ROOT') return 'duofinance_state_root_household_v1';
+  if (user.linkedMemberId) return `duofinance_state_member_${user.linkedMemberId}_v1`;
   return `duofinance_state_user_${user.id}_v1`;
 }
 
@@ -78,7 +80,7 @@ export async function loginUser(
 
   const email = emailInput.trim().toLowerCase();
   const rows = await sql`
-    SELECT id, name, email, password_hash, salt, security_question, role, created_at
+    SELECT id, name, email, password_hash, salt, security_question, role, linked_member_id, created_at
     FROM duofinance_users
     WHERE LOWER(email) = ${email}
     LIMIT 1
@@ -96,6 +98,7 @@ export async function loginUser(
     salt: string;
     security_question: string;
     role: string;
+    linked_member_id?: string | null;
     created_at: string;
   };
 
@@ -115,6 +118,7 @@ export async function loginUser(
     email: row.email,
     role: row.role as UserRole,
     securityQuestion: row.security_question,
+    linkedMemberId: row.linked_member_id || undefined,
     createdAt: String(row.created_at),
   };
 
@@ -135,6 +139,7 @@ export async function registerUser(params: {
   password: string;
   securityQuestion: string;
   securityAnswer: string;
+  linkedMemberId?: string;
 }): Promise<AuthSession> {
   await ensureDatabaseTables();
 
@@ -181,6 +186,7 @@ export async function registerUser(params: {
       security_question,
       security_answer_hash,
       role,
+      linked_member_id,
       created_at
     ) VALUES (
       ${userId},
@@ -191,6 +197,7 @@ export async function registerUser(params: {
       ${params.securityQuestion},
       ${answerHash},
       ${role},
+      ${params.linkedMemberId || null},
       NOW()
     )
   `;
@@ -201,6 +208,7 @@ export async function registerUser(params: {
     email,
     role,
     securityQuestion: params.securityQuestion,
+    linkedMemberId: params.linkedMemberId || undefined,
     createdAt: new Date().toISOString(),
   };
 
@@ -300,7 +308,7 @@ export async function adminListUsers(): Promise<AuthUser[]> {
   await ensureDatabaseTables();
 
   const rows = await sql`
-    SELECT id, name, email, role, security_question, created_at
+    SELECT id, name, email, role, security_question, linked_member_id, created_at
     FROM duofinance_users
     ORDER BY created_at ASC
   `;
@@ -312,6 +320,7 @@ export async function adminListUsers(): Promise<AuthUser[]> {
       email: string;
       role: string;
       security_question: string;
+      linked_member_id?: string | null;
       created_at: string;
     };
     return {
@@ -320,9 +329,26 @@ export async function adminListUsers(): Promise<AuthUser[]> {
       email: row.email,
       role: row.role as UserRole,
       securityQuestion: row.security_question,
+      linkedMemberId: row.linked_member_id || undefined,
       createdAt: String(row.created_at),
     };
   });
+}
+
+/**
+ * Atualiza o vínculo de um usuário comum com um participante da casa.
+ */
+export async function adminUpdateUserLinkedMember(
+  userId: string,
+  linkedMemberId: string | null
+): Promise<void> {
+  await ensureDatabaseTables();
+
+  await sql`
+    UPDATE duofinance_users
+    SET linked_member_id = ${linkedMemberId || null}
+    WHERE id = ${userId}
+  `;
 }
 
 /**

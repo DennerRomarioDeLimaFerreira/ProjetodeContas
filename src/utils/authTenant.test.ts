@@ -44,6 +44,26 @@ describe('Auth & Multi-Tenant Segregation — QA Tenant Isolation Gate', () => {
     expect(getStoreKeyForUser(userA)).not.toBe(getStoreKeyForUser(userB));
   });
 
+  it('deve mapear usuário comum vinculado a um membro da casa (linkedMemberId) para o store da casa principal', () => {
+    const linkedUser: AuthUser = {
+      id: 'uuid-eder-user',
+      name: 'Eder Ferreira',
+      email: 'eder@teste.local',
+      role: 'USER',
+      linkedMemberId: 'member-eder-household',
+      createdAt: '2026-05-01T00:00:00Z',
+    };
+
+    // Usuário vinculado deve ler o store principal da casa
+    expect(getStoreKeyForUser(linkedUser)).toBe(ROOT_STORE_KEY);
+    expect(getStoreKeyForUser(linkedUser)).toBe('main_household');
+
+    // Chave de cache local deve ser isolada por membro
+    expect(getUserLocalStorageStateKey(linkedUser)).toBe(
+      'duofinance_state_member_member-eder-household_v1'
+    );
+  });
+
   it('deve aplicar fallback seguro para o store principal quando usuário não estiver autenticado', () => {
     expect(getStoreKeyForUser(null)).toBe(ROOT_STORE_KEY);
   });

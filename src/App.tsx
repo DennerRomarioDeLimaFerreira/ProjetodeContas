@@ -32,6 +32,7 @@ import { DashboardView } from './components/DashboardView';
 import { ImportExportModal } from './components/ImportExportModal';
 import { LgpdConsentModal } from './components/LgpdConsentModal';
 import { LgpdDlpBanner } from './components/LgpdDlpBanner';
+import { MemberPersonalView } from './components/MemberPersonalView';
 import { SharedView } from './components/SharedView';
 import {
   SaveTransactionsMeta,
@@ -235,6 +236,11 @@ export function App() {
     if (!isInitialCloudLoadDone.current) return;
     if (skipNextCloudSave.current) {
       skipNextCloudSave.current = false;
+      return;
+    }
+
+    // Participantes vinculados possuem acesso estritamente leitura — nunca sobrescrevem o domicílio principal na nuvem
+    if (session.user.role !== 'ROOT' && session.user.linkedMemberId) {
       return;
     }
 
@@ -608,6 +614,25 @@ export function App() {
           setSession(newSession);
           setState(loadStateForSession(newSession));
         }}
+      />
+    );
+  }
+
+  // Visualização dedicada e segura de Extrato Pessoal para usuários vinculados a participantes da casa
+  if (session.user.role !== 'ROOT' && session.user.linkedMemberId) {
+    return (
+      <MemberPersonalView
+        session={session}
+        linkedMemberId={session.user.linkedMemberId}
+        members={state.members}
+        cards={state.cards}
+        categories={state.categories}
+        monthTransactions={monthTransactions}
+        selectedMonth={selectedMonth}
+        onSelectMonth={(m) => setSelectedMonth(m)}
+        onSyncFromCloud={() => syncFromCloud()}
+        isSyncing={cloudStatus === 'connecting' || cloudStatus === 'saving'}
+        onLogout={handleLogout}
       />
     );
   }
@@ -1210,6 +1235,7 @@ export function App() {
         isOpen={isUsersModalOpen}
         onClose={() => setIsUsersModalOpen(false)}
         currentUser={session.user}
+        members={state.members}
       />
 
       <LgpdConsentModal

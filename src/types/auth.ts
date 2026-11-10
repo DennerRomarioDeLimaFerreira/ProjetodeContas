@@ -6,6 +6,7 @@ export interface AuthUser {
   email: string;
   role: UserRole;
   securityQuestion?: string;
+  linkedMemberId?: string;
   createdAt: string;
 }
 

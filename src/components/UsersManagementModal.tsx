@@ -13,10 +13,12 @@ import {
   X,
 } from 'lucide-react';
 import { AuthUser, SECURITY_QUESTIONS } from '../types/auth';
+import { Member } from '../types/finance';
 import {
   adminDeleteUser,
   adminListUsers,
   adminResetUserPassword,
+  adminUpdateUserLinkedMember,
   registerUser,
 } from '../utils/authService';
 
@@ -24,12 +26,14 @@ interface UsersManagementModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: AuthUser;
+  members: Member[];
 }
 
 export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({
   isOpen,
   onClose,
   currentUser,
+  members,
 }) => {
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [loading, setLoading] = useState(false);
@@ -43,6 +47,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({
   const [newPassword, setNewPassword] = useState('');
   const [newQuestion, setNewQuestion] = useState<string>(SECURITY_QUESTIONS[0]);
   const [newAnswer, setNewAnswer] = useState('');
+  const [newLinkedMemberId, setNewLinkedMemberId] = useState<string>('');
 
   // Modal Redefinir Senha
   const [targetResetUser, setTargetResetUser] = useState<AuthUser | null>(null);
@@ -88,6 +93,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({
         password: newPassword,
         securityQuestion: newQuestion,
         securityAnswer: newAnswer,
+        linkedMemberId: newLinkedMemberId || undefined,
       });
 
       setSuccessMsg(`Usuário "${newName}" criado com sucesso!`);
@@ -95,11 +101,30 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({
       setNewEmail('');
       setNewPassword('');
       setNewAnswer('');
+      setNewLinkedMemberId('');
       setShowCreateForm(false);
       await loadUsers();
     } catch (err: unknown) {
       setErrorMsg(
         err instanceof Error ? err.message : 'Erro ao criar usuário.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateLinkedMember = async (userId: string, memberId: string) => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    setLoading(true);
+
+    try {
+      await adminUpdateUserLinkedMember(userId, memberId || null);
+      setSuccessMsg('Vínculo de membro atualizado com sucesso!');
+      await loadUsers();
+    } catch (err: unknown) {
+      setErrorMsg(
+        err instanceof Error ? err.message : 'Erro ao atualizar vínculo do usuário.'
       );
     } finally {
       setLoading(false);
@@ -318,6 +343,29 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({
                 </select>
               </div>
 
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">
+                  Vincular a Participante da Casa (Opcional)
+                </label>
+                <select
+                  value={newLinkedMemberId}
+                  onChange={(e) => setNewLinkedMemberId(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="" className="bg-slate-900 text-slate-400">
+                    Nenhum (Criar espaço independente e isolado)
+                  </option>
+                  {members.map((m) => (
+                    <option key={m.id} value={m.id} className="bg-slate-900 text-white">
+                      {m.name} (Ver extrato & faturas desta casa)
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Se vinculado a um membro, ao logar este usuário verá seu extrato pessoal e contas a pagar do domicílio familiar.
+                </p>
+              </div>
+
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="button"
@@ -396,12 +444,13 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({
           {/* Tabela de Usuários */}
           <div className="bg-slate-950/60 border border-slate-800 rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[550px] text-left text-xs border-collapse">
+              <table className="w-full min-w-[650px] text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-800 text-slate-400 bg-slate-950/80">
                     <th className="py-3 px-4 font-medium">Usuário</th>
                     <th className="py-3 px-4 font-medium">E-mail</th>
                     <th className="py-3 px-4 font-medium">Perfil</th>
+                    <th className="py-3 px-4 font-medium">Membro Vinculado</th>
                     <th className="py-3 px-4 font-medium">Cadastrado em</th>
                     <th className="py-3 px-4 font-medium text-right">Ações</th>
                   </tr>
@@ -436,6 +485,27 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({
                             <Shield className="w-3 h-3" />
                             {isRoot ? 'ROOT' : 'USUÁRIO'}
                           </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {isRoot ? (
+                            <span className="text-slate-400 italic text-[11px]">
+                              Titular Master
+                            </span>
+                          ) : (
+                            <select
+                              value={u.linkedMemberId || ''}
+                              onChange={(e) => handleUpdateLinkedMember(u.id, e.target.value)}
+                              disabled={loading}
+                              className="bg-slate-900 border border-slate-800 text-slate-200 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-emerald-500 hover:border-slate-700 transition"
+                            >
+                              <option value="">Nenhum (Independente)</option>
+                              {members.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-slate-400">
                           {new Date(u.createdAt).toLocaleDateString('pt-BR')}

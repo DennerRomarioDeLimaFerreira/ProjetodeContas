@@ -38,9 +38,19 @@ export async function ensureDatabaseTables(): Promise<void> {
       security_question TEXT NOT NULL,
       security_answer_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'USER',
+      linked_member_id TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+
+  // Migração idempotente: adiciona linked_member_id se a tabela já existia antes
+  try {
+    await sql`
+      ALTER TABLE duofinance_users ADD COLUMN IF NOT EXISTS linked_member_id TEXT
+    `;
+  } catch {
+    // Ignora se não puder alterar ou já existir
+  }
 
   // 3. Semeia o usuário ROOT inicial se a tabela estiver vazia
   const existingUsers = await sql`
