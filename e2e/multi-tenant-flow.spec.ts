@@ -1,10 +1,19 @@
 import { test, expect } from '@playwright/test';
+import { execSync } from 'node:child_process';
 
 test.describe('E2E Full-Story — Governança Multi-Tenant, Mobile e Zero-Breakage', () => {
   const testId = Date.now();
   const testEmail = `tester_${testId}@contas.local`;
   const testPassword = 'Password@123';
   const testName = `Usuário Teste ${testId}`;
+
+  test.afterAll(() => {
+    try {
+      execSync('node scripts/cleanup-test-users.mjs', { stdio: 'ignore' });
+    } catch {
+      // Ignora erro eventual de conexão
+    }
+  });
 
   test('deve registrar usuário comum, isolar dados do ROOT e manter persistência e ergonomia mobile', async ({
     page,

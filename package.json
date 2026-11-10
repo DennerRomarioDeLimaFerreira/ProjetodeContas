@@ -12,6 +12,7 @@
     "qa:layout": "node scripts/qa-layout-audit.mjs",
     "qa:scorecard": "node scripts/qa-guardian-scorecard.mjs",
     "qa:check": "node scripts/qa-guardian-scorecard.mjs",
+    "qa:cleanup": "node scripts/cleanup-test-users.mjs",
     "build": "tsc -b && vite build",
     "deploy": "npm run qa:check && npx --yes gh-pages -d dist",
     "lint": "oxlint",

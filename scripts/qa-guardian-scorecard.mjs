@@ -81,6 +81,16 @@ runStep('6. E2E Simulação Humana (Playwright)', 'npx.cmd playwright test', (ou
   return match ? `${match[1]} (Desktop & Mobile Pixel 7)` : 'Navegação e Isolamento E2E validados';
 });
 
+// Autolimpeza de usuários de teste gerados durante o E2E
+try {
+  execSync('node scripts/cleanup-test-users.mjs', {
+    cwd: rootDir,
+    stdio: 'ignore',
+  });
+} catch {
+  // Ignora se não houver conexão no momento
+}
+
 console.log('\n================================================================================');
 console.log('📋 SCORECARD CONSOLIDADO DO QA GUARDIAN');
 console.log('================================================================================\n');
