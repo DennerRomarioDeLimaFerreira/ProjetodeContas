@@ -4,6 +4,7 @@ import {
   Circle,
   CreditCard as CreditCardIcon,
   Edit2,
+  FileText,
   Filter,
   Layers,
   Plus,
@@ -83,6 +84,13 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
     return 2000 + (indexMap.get(tx.id) ?? 0);
   };
 
+  const cardsCount = transactions.filter(
+    (tx) => tx.paymentMethod === 'credit_card'
+  ).length;
+  const nonCardCount = transactions.filter(
+    (tx) => tx.paymentMethod !== 'credit_card'
+  ).length;
+
   const filtered = transactions
     .filter((tx) => {
       if (
@@ -95,7 +103,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
         return false;
       }
       if (filterMethod !== 'all') {
-        if (filterMethod.startsWith('card:')) {
+        if (filterMethod === 'non_card') {
+          if (tx.paymentMethod === 'credit_card') return false;
+        } else if (filterMethod.startsWith('card:')) {
           const cid = filterMethod.replace('card:', '');
           if (tx.cardId !== cid) return false;
         } else if (tx.paymentMethod !== filterMethod) {
@@ -126,6 +136,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           filterSplit === 'installments' &&
           (tx.installmentTotal || 1) <= 1
         ) {
+          return false;
+        }
+        if (filterSplit === 'recurring' && !tx.isRecurring) {
           return false;
         }
       }
@@ -181,6 +194,48 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
 
       {/* Barra de Busca e Filtros */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3">
+        {/* Filtros Rápidos de Origem (Todos vs Cartões vs Fora do Cartão) */}
+        <div className="flex flex-wrap items-center gap-2 pb-1">
+          <button
+            type="button"
+            onClick={() => setFilterMethod('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
+              filterMethod === 'all'
+                ? 'bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20'
+                : 'bg-slate-950/80 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            Todos ({transactions.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setFilterMethod('credit_card')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
+              filterMethod === 'credit_card' || filterMethod.startsWith('card:')
+                ? 'bg-violet-500 text-white font-bold shadow-md shadow-violet-500/20'
+                : 'bg-slate-950/80 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <CreditCardIcon className="w-3.5 h-3.5" />
+            Cartões de Crédito ({cardsCount})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setFilterMethod('non_card')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
+              filterMethod === 'non_card' ||
+              ['pix', 'debit', 'boleto', 'cash'].includes(filterMethod)
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
+                : 'bg-slate-950/80 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            Contas Fora do Cartão ({nonCardCount})
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {/* Busca */}
           <div className="relative">
@@ -215,6 +270,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
           >
             <option value="all">Todos os Métodos / Cartões</option>
+            <optgroup label="Visões Agrupadas">
+              <option value="credit_card">Todos Cartões de Crédito</option>
+              <option value="non_card">Contas Fora do Cartão (Todas)</option>
+            </optgroup>
             <optgroup label="Cartões Específicos">
               {cards.map((c) => (
                 <option key={c.id} value={`card:${c.id}`}>
@@ -222,11 +281,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                 </option>
               ))}
             </optgroup>
-            <optgroup label="Formas de Pagamento">
-              <option value="credit_card">Todos Cartões de Crédito</option>
+            <optgroup label="Formas Fora do Cartão">
+              <option value="boleto">Boleto</option>
               <option value="pix">Pix</option>
               <option value="debit">Débito</option>
-              <option value="boleto">Boleto</option>
               <option value="cash">Dinheiro</option>
             </optgroup>
           </select>
@@ -255,6 +313,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
             <option value="shared">Apenas Compartilhados</option>
             <option value="individual">Apenas Individuais</option>
             <option value="installments">Apenas Compras Parceladas</option>
+            <option value="recurring">Apenas Contas Fixas</option>
           </select>
         </div>
 
@@ -438,7 +497,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                               {card.name} (Dono: {cardOwnerName})
                             </span>
                           ) : (
-                            PAYMENT_METHOD_LABELS[tx.paymentMethod]
+                            <span className="text-amber-300 font-medium flex items-center gap-1">
+                              <FileText className="w-3 h-3" />
+                              Fora do Cartão ({PAYMENT_METHOD_LABELS[tx.paymentMethod]})
+                            </span>
                           )}
                         </span>
                         <span>•</span>
