@@ -9,7 +9,6 @@ import {
   Loader2,
   Lock,
   Mail,
-  Shield,
   ShieldCheck,
   User,
   UserPlus,
@@ -297,20 +296,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                 </>
               )}
             </button>
-
-            {/* Dica para o ROOT */}
-            <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 text-[11px] text-slate-400 space-y-1">
-              <span className="font-semibold text-slate-300 flex items-center gap-1">
-                <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                Acesso ROOT Inicial:
-              </span>
-              <p>
-                E-mail: <strong className="text-white">denner@contas.local</strong> | Senha: <strong className="text-white">Admin@123</strong>
-              </p>
-              <p className="text-[10px] text-slate-500">
-                (Acessa diretamente a base histórica consolidada do Neon).
-              </p>
-            </div>
           </form>
         )}
 
