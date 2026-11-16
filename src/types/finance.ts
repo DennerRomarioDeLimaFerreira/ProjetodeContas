@@ -14,6 +14,7 @@ export interface Member {
   role: string; // ex: "Você", "Parceiro(a)"
   avatarColor: string;
   monthlyIncome: number;
+  pixKey?: string; // Chave Pix para transferências (CPF, celular, e-mail ou aleatória)
 }
 
 export interface Category {
@@ -101,4 +102,5 @@ export interface FinanceState {
   cards: CreditCard[];
   transactions: Transaction[];
   settlements: SettlementRecord[];
+  householdPixKey?: string; // Chave Pix principal da casa para recebimento de transferências dos membros
 }

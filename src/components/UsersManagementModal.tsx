@@ -6,6 +6,7 @@ import {
   Loader2,
   Plus,
   Shield,
+  Sparkles,
   Trash2,
   User,
   UserPlus,
@@ -27,6 +28,8 @@ interface UsersManagementModalProps {
   onClose: () => void;
   currentUser: AuthUser;
   members: Member[];
+  householdPixKey?: string;
+  onSaveHouseholdPixKey?: (key: string) => void;
 }
 
 export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({
@@ -34,11 +37,17 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({
   onClose,
   currentUser,
   members,
+  householdPixKey,
+  onSaveHouseholdPixKey,
 }) => {
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Configuração da Chave Pix da Casa
+  const [pixKeyInput, setPixKeyInput] = useState(householdPixKey || '');
+  const [pixSaved, setPixSaved] = useState(false);
 
   // Modal Novo Usuário interno
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -75,8 +84,19 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({
       setTargetResetUser(null);
       setErrorMsg(null);
       setSuccessMsg(null);
+      setPixKeyInput(householdPixKey || '');
+      setPixSaved(false);
     }
-  }, [isOpen]);
+  }, [isOpen, householdPixKey]);
+
+  const handleSavePixKey = () => {
+    if (onSaveHouseholdPixKey) {
+      onSaveHouseholdPixKey(pixKeyInput.trim());
+      setPixSaved(true);
+      setSuccessMsg('Chave Pix da casa salva com sucesso!');
+      setTimeout(() => setPixSaved(false), 2500);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -237,6 +257,39 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({
 
         {/* Content Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
+          {/* Configuração da Chave Pix da Casa (Para Acertos & Transferências) */}
+          <div className="bg-slate-950/70 border border-teal-500/30 rounded-2xl p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-teal-300 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-teal-400" />
+                Chave Pix do Titular da Casa
+              </span>
+              <span className="text-[10px] bg-teal-500/15 text-teal-300 border border-teal-500/30 px-2 py-0.5 rounded-full font-medium">
+                Para Acertos dos Membros
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Configure sua chave Pix (CPF, celular, e-mail ou aleatória). Ela é a chave que os membros vinculados (como o Eder) copiam em 1-clique no extrato deles para transferir o valor das faturas e contas.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+              <input
+                type="text"
+                placeholder="Ex: 123.456.789-00 ou seu-email@pix.com ou chave aleatória"
+                value={pixKeyInput}
+                onChange={(e) => setPixKeyInput(e.target.value)}
+                className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-500 font-mono"
+              />
+              <button
+                type="button"
+                onClick={handleSavePixKey}
+                className="px-4 py-2 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs rounded-xl transition shrink-0 flex items-center justify-center gap-1.5 shadow-md shadow-teal-500/20"
+              >
+                {pixSaved ? <CheckCircle2 className="w-3.5 h-3.5" /> : null}
+                {pixSaved ? 'Chave Salva!' : 'Salvar Chave Pix'}
+              </button>
+            </div>
+          </div>
+
           {/* Top Actions */}
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs text-slate-400">

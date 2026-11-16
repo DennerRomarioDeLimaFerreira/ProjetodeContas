@@ -629,6 +629,7 @@ export function App() {
         categories={state.categories}
         monthTransactions={monthTransactions}
         selectedMonth={selectedMonth}
+        householdPixKey={state.householdPixKey}
         onSelectMonth={(m) => setSelectedMonth(m)}
         onSyncFromCloud={() => syncFromCloud()}
         isSyncing={cloudStatus === 'connecting' || cloudStatus === 'saving'}
@@ -948,6 +949,13 @@ export function App() {
             cards={state.cards}
             monthTransactions={monthTransactions}
             settlements={state.settlements}
+            householdPixKey={state.householdPixKey}
+            onSaveHouseholdPixKey={(key) => {
+              setState((prev) => ({
+                ...prev,
+                householdPixKey: key,
+              }));
+            }}
             onPayCardInvoice={handlePayCardInvoice}
             onUpdateMember={handleUpdateMember}
             onAddMember={handleAddMember}
@@ -1236,6 +1244,13 @@ export function App() {
         onClose={() => setIsUsersModalOpen(false)}
         currentUser={session.user}
         members={state.members}
+        householdPixKey={state.householdPixKey}
+        onSaveHouseholdPixKey={(key) => {
+          setState((prev) => ({
+            ...prev,
+            householdPixKey: key,
+          }));
+        }}
       />
 
       <LgpdConsentModal

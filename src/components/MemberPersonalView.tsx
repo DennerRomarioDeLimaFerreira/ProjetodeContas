@@ -34,6 +34,7 @@ export interface MemberPersonalViewProps {
   categories: Category[];
   monthTransactions: Transaction[];
   selectedMonth: string;
+  householdPixKey?: string;
   onSelectMonth: (month: string) => void;
   onSyncFromCloud: () => void;
   isSyncing: boolean;
@@ -50,6 +51,7 @@ export const MemberPersonalView: React.FC<MemberPersonalViewProps> = ({
   categories,
   monthTransactions,
   selectedMonth,
+  householdPixKey,
   onSelectMonth,
   onSyncFromCloud,
   isSyncing,
@@ -148,10 +150,12 @@ export const MemberPersonalView: React.FC<MemberPersonalViewProps> = ({
       .filter((item) => item.totalShare > 0);
   }, [settlement, linkedMemberId]);
 
+  const effectivePixKey = useMemo(() => {
+    return householdPixKey?.trim() || householdHolder.pixKey?.trim() || session.user.email;
+  }, [householdPixKey, householdHolder.pixKey, session.user.email]);
+
   const handleCopyPix = () => {
-    // Chave padrão: email do titular ou do sistema
-    const pixKey = session.user.email;
-    navigator.clipboard.writeText(pixKey);
+    navigator.clipboard.writeText(effectivePixKey);
     setPixCopied(true);
     setTimeout(() => setPixCopied(false), 2500);
   };
@@ -310,19 +314,30 @@ export const MemberPersonalView: React.FC<MemberPersonalViewProps> = ({
 
           {/* Chave Pix para Pagamento Rápido */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-lg flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-teal-400 flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5 text-teal-300" />
-                Pagar via Pix
-              </span>
-              <span className="text-[10px] bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full font-medium">
-                1-Clique
-              </span>
-            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-teal-400 flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 text-teal-300" />
+                  Pagar via Pix
+                </span>
+                <span className="text-[10px] bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full font-medium">
+                  1-Clique
+                </span>
+              </div>
 
-            <p className="text-[11px] text-slate-400 mb-3">
-              Transfira para {householdHolder.name} ao fechar o mês.
-            </p>
+              <p className="text-[11px] text-slate-400 mb-2">
+                Transfira para {householdHolder.name} ao fechar o mês.
+              </p>
+
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 mb-3">
+                <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+                  Chave Pix do Titular ({householdHolder.name})
+                </div>
+                <div className="text-xs font-mono font-bold text-teal-300 truncate select-all mt-0.5" title={effectivePixKey}>
+                  {effectivePixKey}
+                </div>
+              </div>
+            </div>
 
             <button
               type="button"

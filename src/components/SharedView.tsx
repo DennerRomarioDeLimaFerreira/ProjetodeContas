@@ -32,6 +32,8 @@ interface SharedViewProps {
   cards: CreditCard[];
   monthTransactions: Transaction[];
   settlements: SettlementRecord[];
+  householdPixKey?: string;
+  onSaveHouseholdPixKey?: (key: string) => void;
   onPayCardInvoice?: (cardId: string, month: string) => void;
   onUpdateMember: (member: Member) => void;
   onAddMember: (member: Member) => void;
@@ -49,6 +51,8 @@ export const SharedView: React.FC<SharedViewProps> = ({
   cards,
   monthTransactions,
   settlements,
+  householdPixKey,
+  onSaveHouseholdPixKey,
   onPayCardInvoice,
   onUpdateMember,
   onAddMember,
@@ -64,6 +68,9 @@ export const SharedView: React.FC<SharedViewProps> = ({
 
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
+
+  const [isEditingPix, setIsEditingPix] = useState(false);
+  const [pixInput, setPixInput] = useState(householdPixKey || '');
 
   const monthSettlements = settlements.filter(
     (s) => s.competenceMonth === selectedMonth
@@ -498,9 +505,72 @@ export const SharedView: React.FC<SharedViewProps> = ({
               <h3 className="text-base font-bold text-white mb-1">
                 Contas da Casa Pagas no Pix / À Vista
               </h3>
-              <p className="text-xs text-slate-300/80 mb-4">
+              <p className="text-xs text-slate-300/80 mb-3">
                 Apenas despesas que foram pagas diretamente do bolso (sem passar em cartão). Não abate valores das faturas de cartão.
               </p>
+
+              {/* Barra da Chave Pix da Casa */}
+              <div className="bg-slate-950/80 border border-emerald-500/30 rounded-xl p-3 mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-teal-300 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-teal-400" />
+                    Chave Pix da Casa para Acertos:
+                  </span>
+                  {!isEditingPix && onSaveHouseholdPixKey && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPixInput(householdPixKey || '');
+                        setIsEditingPix(true);
+                      }}
+                      className="text-[10px] text-teal-400 hover:text-teal-300 font-semibold"
+                    >
+                      Alterar
+                    </button>
+                  )}
+                </div>
+
+                {isEditingPix ? (
+                  <div className="flex gap-2 pt-1">
+                    <input
+                      type="text"
+                      value={pixInput}
+                      onChange={(e) => setPixInput(e.target.value)}
+                      placeholder="Ex: seu-cpf, email, telefone..."
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-mono focus:outline-none focus:border-teal-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onSaveHouseholdPixKey) {
+                          onSaveHouseholdPixKey(pixInput.trim());
+                        }
+                        setIsEditingPix(false);
+                      }}
+                      className="px-2.5 py-1 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs rounded-lg transition"
+                    >
+                      Salvar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingPix(false)}
+                      className="px-2 py-1 bg-slate-800 text-slate-400 hover:text-white text-xs rounded-lg transition"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-xs font-mono font-bold text-slate-200">
+                    {householdPixKey ? (
+                      householdPixKey
+                    ) : (
+                      <span className="text-slate-500 italic font-normal">
+                        Nenhuma chave configurada ainda (clique em Alterar para definir)
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {transfers.length === 0 ? (
                 <div className="bg-emerald-500/15 border border-emerald-500/30 rounded-xl p-4 text-center space-y-1">
