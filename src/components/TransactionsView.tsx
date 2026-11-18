@@ -165,11 +165,23 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
 
   const totalFilteredExpenses = filtered
     .filter((t) => t.type === 'expense')
-    .reduce((acc, t) => acc + t.amount, 0);
+    .reduce((acc, t) => {
+      if (filterMember !== 'all') {
+        const shares = calculateTransactionShares(t, members);
+        return acc + (shares[filterMember] ?? 0);
+      }
+      return acc + t.amount;
+    }, 0);
 
   const totalFilteredIncomes = filtered
     .filter((t) => t.type === 'income')
-    .reduce((acc, t) => acc + t.amount, 0);
+    .reduce((acc, t) => {
+      if (filterMember !== 'all') {
+        const shares = calculateTransactionShares(t, members);
+        return acc + (shares[filterMember] ?? 0);
+      }
+      return acc + t.amount;
+    }, 0);
 
   return (
     <div className="space-y-5">
@@ -359,14 +371,22 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
           <div className="flex items-center gap-4">
             {totalFilteredIncomes > 0 && (
               <span>
-                Receitas filtradas:{' '}
+                {filterMember !== 'all' ? (
+                  <>Receitas ({memberMap[filterMember]?.name || 'Membro'}): </>
+                ) : (
+                  'Receitas filtradas: '
+                )}
                 <strong className="text-emerald-400">
                   {formatCurrency(totalFilteredIncomes)}
                 </strong>
               </span>
             )}
             <span>
-              Despesas filtradas:{' '}
+              {filterMember !== 'all' ? (
+                <>Cota ({memberMap[filterMember]?.name || 'Membro'}): </>
+              ) : (
+                'Despesas filtradas: '
+              )}
               <strong className="text-rose-400">
                 {formatCurrency(totalFilteredExpenses)}
               </strong>
@@ -403,6 +423,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
               const isInstallment = (tx.installmentTotal || 1) > 1;
               const isIndividual =
                 tx.type === 'income' || tx.splitType === 'individual';
+              const memberShare =
+                filterMember !== 'all'
+                  ? calculateTransactionShares(tx, members)[filterMember] ?? tx.amount
+                  : null;
 
               return (
                 <div
@@ -525,8 +549,13 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                         }`}
                       >
                         {tx.type === 'income' ? '+ ' : '- '}
-                        {formatCurrency(tx.amount)}
+                        {formatCurrency(memberShare !== null ? memberShare : tx.amount)}
                       </div>
+                      {memberShare !== null && Math.abs(memberShare - tx.amount) > 0.001 && (
+                        <div className="text-[10px] text-amber-300 font-semibold">
+                          Cota de {formatCurrency(tx.amount)}
+                        </div>
+                      )}
                       {isInstallment && tx.totalPurchaseAmount && (
                         <div className="text-[10px] text-slate-500">
                           Total compra: {formatCurrency(tx.totalPurchaseAmount)}
