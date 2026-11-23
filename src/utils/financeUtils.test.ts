@@ -6,6 +6,7 @@ import {
   calculateTransactionShares,
   calculateCardInvoiceBreakdowns,
   addMonths,
+  normalizeCompetenceMonth,
 } from './financeUtils';
 import type { Member, CreditCard, Transaction } from '../types/finance';
 
@@ -59,6 +60,16 @@ describe('Finance Utilities — QA Financial Precision & Invariants', () => {
       // Compra após o fechamento (dia 20) -> Fatura do mês seguinte 2026-06
       const compAfter = computeFirstCompetenceMonth('2026-05-20', 'credit_card', card);
       expect(compAfter).toBe('2026-06');
+    });
+
+    it('deve sanitizar e normalizar competências incompletas ou anos inválidos', () => {
+      // Caso do bug 202-12
+      expect(normalizeCompetenceMonth('202-12')).toMatch(/^\d{4}-12$/);
+      expect(addMonths('202-12', 1)).toMatch(/^\d{4}-01$/);
+
+      // Datas truncadas durante digitação não quebram computeFirstCompetenceMonth
+      expect(computeFirstCompetenceMonth('202-11-19', 'credit_card')).toMatch(/^\d{4}-\d{2}$/);
+      expect(computeFirstCompetenceMonth('', 'pix')).toMatch(/^\d{4}-\d{2}$/);
     });
   });
 

@@ -30,6 +30,7 @@ import {
   formatCurrency,
   formatMonthLabel,
   getTodayISO,
+  normalizeCompetenceMonth,
   parseExactNumber,
 } from '../utils/financeUtils';
 import { detectPII } from '../utils/lgpd';
@@ -276,7 +277,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     selectedCard
   );
 
-  const firstCompetence = firstCompetenceOverride || autoFirstCompetence;
+  const firstCompetence = normalizeCompetenceMonth(
+    firstCompetenceOverride || autoFirstCompetence
+  );
 
   const competenceOptions = [-9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4].map(
     (offset) => addMonths(selectedMonth, offset)
@@ -448,7 +451,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         competenceMonth:
           effectiveInstallments === 1
             ? firstCompetence
-            : editingTransaction.competenceMonth,
+            : normalizeCompetenceMonth(editingTransaction.competenceMonth),
         categoryId: resolvedCategoryId,
         paymentMethod,
         cardId: paymentMethod === 'credit_card' ? cardId : undefined,
@@ -654,8 +657,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     const newDate = e.target.value;
                     setDate(newDate);
                     if (
-                      installments > 1 ||
-                      newDate.slice(0, 7) < getTodayISO().slice(0, 7)
+                      /^\d{4}-\d{2}-\d{2}$/.test(newDate) &&
+                      (installments > 1 ||
+                        newDate.slice(0, 7) < getTodayISO().slice(0, 7))
                     ) {
                       setFirstCompetenceOverride(
                         computeFirstCompetenceMonth(

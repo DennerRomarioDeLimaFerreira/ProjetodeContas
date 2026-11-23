@@ -50,8 +50,24 @@ export function getTodayISO(): string {
   return `${year}-${month}-${day}`;
 }
 
+export function normalizeCompetenceMonth(yearMonth: string): string {
+  if (!yearMonth) return getCurrentYearMonth();
+  const parts = yearMonth.trim().split('-');
+  if (parts.length >= 2) {
+    let year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    if (isNaN(year) || year < 1000 || year > 9999) {
+      year = new Date().getFullYear();
+    }
+    const safeMonth = Math.min(12, Math.max(1, isNaN(month) ? 1 : month));
+    return `${year}-${String(safeMonth).padStart(2, '0')}`;
+  }
+  return getCurrentYearMonth();
+}
+
 export function addMonths(yearMonth: string, delta: number): string {
-  const [y, m] = yearMonth.split('-').map(Number);
+  const normalized = normalizeCompetenceMonth(yearMonth);
+  const [y, m] = normalized.split('-').map(Number);
   const date = new Date(y, m - 1 + delta, 1);
   const newY = date.getFullYear();
   const newM = String(date.getMonth() + 1).padStart(2, '0');
@@ -89,11 +105,14 @@ export function computeFirstCompetenceMonth(
   paymentMethod: PaymentMethod,
   card?: CreditCard
 ): string {
+  if (!purchaseDateISO || !/^\d{4}-\d{2}/.test(purchaseDateISO)) {
+    return getCurrentYearMonth();
+  }
   const [y, m, d] = purchaseDateISO.split('-').map(Number);
-  if (!y || !m) return getCurrentYearMonth();
+  if (!y || !m || y < 1000) return getCurrentYearMonth();
   const baseMonth = `${y}-${String(m).padStart(2, '0')}`;
 
-  if (paymentMethod === 'credit_card' && card && d >= card.closingDay) {
+  if (paymentMethod === 'credit_card' && card && typeof d === 'number' && d >= card.closingDay) {
     return addMonths(baseMonth, 1);
   }
   return baseMonth;
